@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { BoringVault } from "./../../src/base/BoringVault.sol";
 import { ManagerWithMerkleVerification } from "./../../src/base/Roles/ManagerWithMerkleVerification.sol";

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { MultiChainBaseTest, MultiChainTellerBase, ERC20, BridgeData } from "./MultiChainBase.t.sol";
 import { MultiChainLayerZeroTellerWithMultiAssetSupport } from

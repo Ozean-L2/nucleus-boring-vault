@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { IonPoolDecoderAndSanitizer } from "../../src/base/DecodersAndSanitizers/IonPoolDecoderAndSanitizer.sol";
 import { BaseScript } from "../Base.s.sol";

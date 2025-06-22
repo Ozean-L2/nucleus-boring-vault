@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { BaseScript } from "./../../Base.s.sol";
 import { stdJson as StdJson } from "@forge-std/StdJson.sol";

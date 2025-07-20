@@ -29,7 +29,7 @@ poseidon = "${POSEIDON_RPC_URL}"
 
 
 [etherscan]
-# mainnet = { key = "${ETHERSCAN_KEY}", url = "https://api.etherscan.io/api" }
+mainnet = { key = "${ETHERSCAN_KEY}", url = "https://api.etherscan.io/api" }
 # polygon = { key = "${POLYGONSCAN_KEY}" }
 # bsc = { key = "${BSCSCAN_KEY}" }
 # avalanche = { key = "${SNOWTRACE_KEY}" }

@@ -56,6 +56,8 @@ library ConfigReader {
         address[] assets;
         address[] rateProviders;
         address[] priceFeeds;
+        address atomicQueue;
+        address atomicSolver;
     }
 
     function toConfig(string memory _config, string memory _chainConfig) internal pure returns (Config memory config) {

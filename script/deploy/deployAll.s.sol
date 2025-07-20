@@ -22,6 +22,9 @@ import { SetAuthorityAndTransferOwnerships } from "./single/08_SetAuthorityAndTr
 
 import { ConfigReader, IAuthority } from "../ConfigReader.s.sol";
 import { console } from "forge-std/console.sol";
+import { DeployAtomicQueue } from "./DeployAtomicQueue.s.sol";
+import { DeployAtomicSolverV3 } from "./DeployAtomicSolverV3.s.sol";
+import { ConfigureAtomicRoles } from "../ConfigureAtomicRoles.s.sol";
 
 string constant OUTPUT_JSON_PATH = "./deployment-config/out.json";
 
@@ -65,6 +68,8 @@ contract DeployAll is BaseScript {
         mainConfig.accountant.toHexString().write(OUTPUT_JSON_PATH, ".accountant");
         mainConfig.teller.toHexString().write(OUTPUT_JSON_PATH, ".teller");
         mainConfig.rolesAuthority.toHexString().write(OUTPUT_JSON_PATH, ".rolesAuthority");
+        mainConfig.atomicQueue.toHexString().write(OUTPUT_JSON_PATH, ".atomicQueue");
+        mainConfig.atomicSolver.toHexString().write(OUTPUT_JSON_PATH, ".atomicSolver");
     }
 
     function deploy(ConfigReader.Config memory config) public override returns (address) {
@@ -91,6 +96,20 @@ contract DeployAll is BaseScript {
         address rolesAuthority = new DeployRolesAuthority().deploy(config);
         config.rolesAuthority = rolesAuthority;
         console.log("Roles Authority: ", rolesAuthority);
+
+        // Deploy AtomicQueue
+        address atomicQueue = new DeployAtomicQueue().deploy(config);
+        config.atomicQueue = atomicQueue;
+        console.log("Atomic Queue: ", atomicQueue);
+
+        // Deploy AtomicSolverV3
+        address atomicSolver = new DeployAtomicSolverV3().deployWithConfig(config.rolesAuthority);
+        config.atomicSolver = atomicSolver;
+        console.log("Atomic Solver V3: ", atomicSolver);
+
+        // Configure Atomic roles
+        new ConfigureAtomicRoles().deployWithConfig(config);
+        console.log("Atomic Roles Configuration Complete");
 
         new SetAuthorityAndTransferOwnerships().deploy(config);
         console.log("Set Authority And Transfer Ownerships Complete");

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.22;
+pragma solidity 0.8.21;
 
 import { MainnetAddresses } from "test/resources/MainnetAddresses.sol";
 import { BoringVault } from "src/base/BoringVault.sol";
@@ -112,6 +112,7 @@ contract EtherFiLiquid1MigrationTest is Test, MainnetAddresses {
         manager.setAuthority(rolesAuthority);
         accountant.setAuthority(rolesAuthority);
         teller.setAuthority(rolesAuthority);
+        teller.setDepositCap(type(uint256).max);
         vm.stopPrank();
 
         // Setup roles authority.

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.22;
+pragma solidity 0.8.21;
 
 import { Test, stdStorage, StdStorage, stdError } from "@forge-std/Test.sol";
 import { BoringVault } from "src/base/BoringVault.sol";
@@ -22,6 +22,10 @@ contract PortPoCTest is Test, DeployPortProofOfConceptScript {
 
         USDX = WETH;
         run();
+
+        vm.prank(hexTrust);
+        teller.setDepositCap(type(uint256).max);
+        vm.stopPrank();
     }
 
     function test_CanArbitrarilyRemoveFunds() external {

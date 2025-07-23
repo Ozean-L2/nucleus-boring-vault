@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.22;
+pragma solidity 0.8.21;
 
 import { MultiChainBaseTest, MultiChainTellerBase, ERC20, BridgeData } from "./MultiChainBase.t.sol";
 import { MultiChainLayerZeroTellerWithMultiAssetSupport } from
@@ -20,6 +20,7 @@ contract MultiChainLayerZeroTellerWithMultiAssetSupportTest is MultiChainBaseTes
     function setUp() public virtual override(MultiChainBaseTest, TestHelperOz5) {
         MultiChainBaseTest.setUp();
         TestHelperOz5.setUp();
+        MultiChainLayerZeroTellerWithMultiAssetSupport(sourceTellerAddr).setDepositCap(type(uint256).max);
     }
 
     function testBridgingShares(uint256 sharesToBridge) external virtual {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.22;
+pragma solidity 0.8.21;
 
 import { MainnetAddresses } from "test/resources/MainnetAddresses.sol";
 import { BoringVault } from "src/base/BoringVault.sol";
@@ -427,6 +427,415 @@ contract AccountantWithRateProvidersTest is Test, MainnetAddresses {
             )
         );
         accountant.updateDelay(14 days + 1);
+    }
+
+    function testLendingRateAndProtocolFee() external {
+        console.log("\n=== TEST: Lending Rate and Protocol Fee ===");
+
+        // Set lending and protocol fee rates
+        uint256 lendingRate = 1000; // 10% APY
+        uint256 protocolFeeRate = 200; // 2% APY
+
+        accountant.setLendingRate(lendingRate);
+        accountant.setProtocolFeeRate(protocolFeeRate);
+
+        // Verify borrower rate
+        uint256 borrowerRate = accountant.getBorrowerRate();
+        assertEq(borrowerRate, 1200, "Borrower rate should be 12%");
+        console.log("   Lending Rate: %s bps", lendingRate);
+        console.log("   Protocol Fee Rate: %s bps", protocolFeeRate);
+        console.log("   Total Borrower Rate: %s bps", borrowerRate);
+
+        // Test interest accrual
+        skip(365 days); // Skip 1 year
+
+        (uint96 newRate,) = accountant.calculateExchangeRateWithInterest();
+        uint256 expectedRate = uint256(1e18).mulDivDown(11_000, 10_000); // 1.1x
+        assertApproxEqRel(newRate, expectedRate, 0.01e18, "Exchange rate should increase by 10%");
+        console.log("   Exchange rate after 1 year: %s", newRate);
+
+        // Check protocol fees accumulated
+        uint256 previewFees = accountant.previewFeesOwed();
+        uint256 expectedFees = uint256(1000e18).mulDivDown(200, 10_000); // 2% of 1000
+        assertApproxEqRel(previewFees, expectedFees, 0.01e18, "Protocol fees should be 2% of deposits");
+        console.log("   Protocol fees owed: %s", previewFees);
+    }
+
+    function testMaxLendingRateEnforcement() external {
+        console.log("\n=== TEST: Max Lending Rate Enforcement ===");
+
+        // Set max rate
+        uint256 maxRate = 3000; // 30%
+        accountant.setMaxLendingRate(maxRate);
+
+        // Try to set rate above max
+        vm.expectRevert("Lending rate exceeds maximum");
+        accountant.setLendingRate(3100);
+        console.log("   Setting rate above max correctly reverted");
+
+        // Set rate at max should work
+        accountant.setLendingRate(3000);
+        (uint256 currentLendingRate,,) = accountant.lendingInfo();
+        assertEq(currentLendingRate, 3000);
+        console.log("   Setting rate at max successful");
+    }
+
+    function testLendingWithProtocolFeeFlow() external {
+        console.log("\n=== TEST: Complete Lending Flow with Protocol Fees ===");
+
+        // Setup rates
+        accountant.setLendingRate(1000); // 10% lending
+        accountant.setProtocolFeeRate(200); // 2% protocol fee
+        accountant.updateManagementFee(0); // No management fee for clarity
+
+        uint256 initialDeposits = WETH.balanceOf(address(boringVault));
+        console.log("   Initial vault balance: %s WETH", initialDeposits / 1e18);
+
+        // Simulate time passing
+        skip(182.5 days); // 6 months
+
+        // Update exchange rate to checkpoint
+        (uint96 currentRate,) = accountant.calculateExchangeRateWithInterest();
+        accountant.updateExchangeRate(currentRate);
+
+        // Check accumulated fees
+        (, uint128 feesOwed,,,,,,,,) = accountant.accountantState();
+        console.log("   Protocol fees after 6 months: %s WETH", feesOwed / 1e18);
+
+        // Vault value should increase by lending rate only
+        uint256 vaultValue = boringVault.totalSupply().mulDivDown(currentRate, 1e18);
+        uint256 expectedValue = initialDeposits.mulDivDown(10_500, 10_000); // 5% for 6 months
+        assertApproxEqRel(vaultValue, expectedValue, 0.01e18);
+        console.log("   Vault value increased to: %s WETH", vaultValue / 1e18);
+
+        // Claim protocol fees
+        deal(address(WETH), address(boringVault), feesOwed); // Ensure vault has fees
+        vm.startPrank(address(boringVault));
+        WETH.approve(address(accountant), feesOwed);
+        accountant.claimFees(WETH);
+        vm.stopPrank();
+
+        assertGt(WETH.balanceOf(payout_address), 0, "Payout address should receive fees");
+        console.log("   Protocol fees claimed: %s WETH", WETH.balanceOf(payout_address) / 1e18);
+    }
+
+    function testRateChangeCheckpointing() external {
+        console.log("\n=== TEST: Rate Change Checkpointing ===");
+
+        // Set initial rates
+        accountant.setLendingRate(1000);
+        accountant.setProtocolFeeRate(100);
+
+        // Let time pass
+        skip(30 days);
+
+        // Get current accumulated interest
+        (uint96 rateBefore,) = accountant.calculateExchangeRateWithInterest();
+        uint256 feesBefore = accountant.previewFeesOwed();
+
+        console.log("   Rate before change: %s", rateBefore);
+        console.log("   Fees before change: %s", feesBefore);
+
+        // Change lending rate (should checkpoint)
+        accountant.setLendingRate(2000);
+
+        // Verify checkpoint happened
+        (, uint128 feesOwed,, uint96 exchangeRate,,,,,,) = accountant.accountantState();
+        assertEq(exchangeRate, rateBefore, "Exchange rate should be checkpointed");
+        assertEq(feesOwed, feesBefore, "Fees should be checkpointed");
+
+        console.log("   Checkpoint successful on rate change");
+    }
+
+    function testInterestAccrualMathPrecision() external {
+        console.log("\n=== TEST: Interest Accrual Math Precision ===");
+
+        // Setup: 10% APY lending rate
+        uint256 lendingRate = 1000; // 10% in basis points
+        accountant.setLendingRate(lendingRate);
+
+        uint256 principal = 1000e18;
+        uint256 initialRate = accountant.getRate();
+        assertEq(initialRate, 1e18, "Initial rate should be 1:1");
+
+        // Test 1: Daily accrual precision
+        console.log("\n1. DAILY ACCRUAL TEST");
+
+        // Save current state and timestamp
+        uint256 checkpointTime = block.timestamp;
+
+        for (uint256 day = 1; day <= 7; day++) {
+            skip(1 days);
+            (uint96 currentRate,) = accountant.calculateExchangeRateWithInterest();
+
+            // Contract uses simple interest
+            uint256 expectedRate = 1e18 + (1e18 * lendingRate * day * 1 days) / (10_000 * 365 days);
+
+            console.log("   Day %d - Rate: %d, Expected: %d", day, currentRate, expectedRate);
+            assertApproxEqRel(currentRate, expectedRate, 0.00001e18, "Daily simple interest accuracy");
+        }
+
+        // Test 2: Annual calculation
+        console.log("\n2. ANNUAL ACCRUAL TEST");
+
+        // Create a fresh accountant for clean test
+        AccountantWithRateProviders freshAccountant = new AccountantWithRateProviders(
+            address(this), address(boringVault), payout_address, 1e18, address(WETH), 1.001e4, 0.999e4, 1, 0
+        );
+        rolesAuthority.setUserRole(address(freshAccountant), UPDATE_EXCHANGE_RATE_ROLE, true);
+        freshAccountant.setLendingRate(lendingRate);
+
+        skip(365 days);
+
+        (uint96 annualRate,) = freshAccountant.calculateExchangeRateWithInterest();
+        uint256 expectedAnnualRate = 1.1e18; // 10% increase with simple interest
+
+        console.log("   After 1 year - Rate: %d", annualRate);
+        console.log("   Expected: %d", expectedAnnualRate);
+
+        assertEq(annualRate, expectedAnnualRate, "Annual rate should be exactly 1.1x");
+    }
+
+    function testCheckpointingAccuracy() external {
+        console.log("\n=== TEST: Checkpointing Accuracy ===");
+
+        // Setup rates
+        accountant.setLendingRate(2000); // 20% APY
+        accountant.setProtocolFeeRate(500); // 5% APY
+
+        uint256 checkpointGas;
+        uint256 lastRate = 1e18;
+
+        // Test multiple checkpoints
+        for (uint256 i = 1; i <= 4; i++) {
+            skip(90 days); // Quarterly
+
+            // Get rate before checkpoint
+            (uint96 rateBeforeCheckpoint,) = accountant.calculateExchangeRateWithInterest();
+            uint256 feesBeforeCheckpoint = accountant.previewFeesOwed();
+
+            // Checkpoint via setLendingRate
+            uint256 gasStart = gasleft();
+            accountant.setLendingRate(2000); // Same rate, just to trigger checkpoint
+            checkpointGas = gasStart - gasleft();
+
+            // Verify checkpoint
+            (, uint128 feesOwed,, uint96 storedRate,,,,,,) = accountant.accountantState();
+
+            console.log("\n   Quarter %d Checkpoint:", i);
+            console.log("     Rate increased from %d to %d", lastRate, storedRate);
+            console.log("     Quarterly growth: %d bps", (storedRate - lastRate) * 10_000 / lastRate);
+            console.log("     Fees checkpointed: %d", feesOwed);
+            console.log("     Gas used: %d", checkpointGas);
+
+            // Verify stored values match calculated
+            assertEq(storedRate, rateBeforeCheckpoint, "Checkpointed rate mismatch");
+            assertEq(feesOwed, feesBeforeCheckpoint, "Checkpointed fees mismatch");
+
+            lastRate = storedRate;
+        }
+
+        // For continuous compounding at 20% APY, final rate should be ~1.22
+        assertApproxEqRel(lastRate, 1.22e18, 0.02e18, "Final rate after 1 year"); // Adjusted expectation
+    }
+
+    function testInterestAccrualEdgeCases() external {
+        console.log("\n=== TEST: Interest Accrual Edge Cases ===");
+
+        // Test 1: Very short time periods (1 second)
+        console.log("\n1. ULTRA SHORT PERIOD (1 second)");
+        accountant.setMaxLendingRate(10_000); // Set max first
+        accountant.setLendingRate(10_000); // 100% APY for easier calculation
+
+        skip(1);
+        (uint96 rateAfter1Sec,) = accountant.calculateExchangeRateWithInterest();
+
+        // Expected rate increase for 1 second at 100% APY
+        uint256 expectedIncrease = uint256(1e18).mulDivDown(10_000, 365 days * 10_000);
+        console.log("   Rate after 1 second: %d", rateAfter1Sec);
+        console.log("   Expected minimum increase: %d", expectedIncrease);
+
+        assertGt(rateAfter1Sec, 1e18, "Rate should increase even for 1 second");
+
+        // Test 2: Very long period (10 years)
+        console.log("\n2. VERY LONG PERIOD (10 years)");
+        skip(3650 days);
+
+        (uint96 rateAfter10Years,) = accountant.calculateExchangeRateWithInterest();
+        console.log("   Rate after 10 years at 100%% APY: %d", rateAfter10Years);
+
+        assertGt(rateAfter10Years, 10e18, "Should have significant growth");
+
+        // Test 3: Zero interest rate
+        console.log("\n3. ZERO INTEREST RATE");
+        accountant.setLendingRate(0);
+
+        uint256 rateBeforeZero = accountant.getRate();
+        skip(365 days);
+        uint256 rateAfterZero = accountant.getRate();
+
+        assertEq(rateAfterZero, rateBeforeZero, "Rate should not change with 0% interest");
+        console.log("   Rate unchanged at: %d", rateAfterZero);
+    }
+
+    function testProtocolFeeAccrualMath() external {
+        console.log("\n=== TEST: Protocol Fee Accrual Math ===");
+
+        // Deposit 1000 tokens
+        uint256 deposits = 1000e18;
+
+        // Set rates
+        accountant.setLendingRate(1000); // 10% for depositors
+        accountant.setProtocolFeeRate(200); // 2% for protocol
+
+        // Test different time periods
+        uint256[4] memory periods = [uint256(1 days), 30 days, 90 days, 365 days];
+        string[4] memory labels = ["1 day", "30 days", "90 days", "365 days"];
+
+        for (uint256 i = 0; i < periods.length; i++) {
+            // Reset state completely
+            vm.warp(0);
+            accountant = new AccountantWithRateProviders(
+                address(this), address(boringVault), payout_address, 1e18, address(WETH), 1.001e4, 0.999e4, 1, 0
+            );
+            rolesAuthority.setUserRole(address(accountant), UPDATE_EXCHANGE_RATE_ROLE, true);
+            accountant.setLendingRate(1000);
+            accountant.setProtocolFeeRate(200);
+
+            skip(periods[i]);
+
+            // Calculate expected fees - use safe math
+            uint256 annualFees = deposits.mulDivDown(200, 10_000);
+            uint256 expectedFees = annualFees.mulDivDown(periods[i], 365 days);
+
+            // Get actual fees
+            uint256 actualFees = accountant.previewFeesOwed();
+
+            console.log("\n   Period: %s", labels[i]);
+            console.log("     Expected fees: %d", expectedFees);
+            console.log("     Actual fees: %d", actualFees);
+
+            assertApproxEqRel(actualFees, expectedFees, 0.01e18, "Fee calculation accuracy");
+        }
+    }
+
+    function testContinuousCompoundingVsSimple() external {
+        console.log("\n=== TEST: Interest Calculation Method ===");
+
+        // Compare calculation method using fresh accountants for each test
+        uint256[3] memory periods = [uint256(30 days), 180 days, 365 days];
+
+        for (uint256 i = 0; i < periods.length; i++) {
+            // Create fresh accountant for each period test
+            AccountantWithRateProviders testAccountant = new AccountantWithRateProviders(
+                address(this), address(boringVault), payout_address, 1e18, address(WETH), 1.001e4, 0.999e4, 1, 0
+            );
+            rolesAuthority.setUserRole(address(testAccountant), UPDATE_EXCHANGE_RATE_ROLE, true);
+            testAccountant.setLendingRate(1000); // 10%
+
+            skip(periods[i]);
+
+            (uint96 actualRate,) = testAccountant.calculateExchangeRateWithInterest();
+
+            // Simple interest calculation
+            uint256 simpleRate = 1e18 + (1e18 * 1000 * periods[i]) / (10_000 * 365 days);
+
+            console.log("\n   Period: %d days", periods[i] / 1 days);
+            console.log("     Actual rate: %d", actualRate);
+            console.log("     Simple rate: %d", simpleRate);
+
+            // The contract uses simple interest
+            assertEq(actualRate, simpleRate, "Contract uses simple interest calculation");
+        }
+    }
+
+    function testRateUpdateBounds() external {
+        console.log("\n=== TEST: Rate Update Bounds with Interest ===");
+
+        // Set tight bounds
+        accountant.updateUpper(10_100); // 1% upper
+        accountant.updateLower(9900); // 1% lower
+
+        // Set lending rate
+        accountant.setLendingRate(500); // 5% APY
+
+        // Let interest accrue
+        skip(73 days); // ~20% of year, so ~1% growth
+
+        // Get current rate with interest
+        (uint96 currentRate,) = accountant.calculateExchangeRateWithInterest();
+        console.log("   Rate after 73 days at 5%% APY: %d", currentRate);
+
+        // Try to update within bounds
+        uint96 newRate = uint96(uint256(currentRate).mulDivDown(10_050, 10_000));
+        accountant.updateExchangeRate(newRate);
+
+        (,,,,,,, bool isPaused,,) = accountant.accountantState();
+        assertFalse(isPaused, "Should not pause within bounds");
+
+        // Try to update outside bounds
+        skip(1 days);
+        newRate = uint96(uint256(currentRate).mulDivDown(10_200, 10_000)); // 2% increase
+        accountant.updateExchangeRate(newRate);
+
+        (,,,,,,, isPaused,,) = accountant.accountantState();
+        assertTrue(isPaused, "Should pause outside bounds");
+    }
+
+    function testStateConsistencyAcrossOperations() external {
+        console.log("\n=== TEST: State Consistency Across Operations ===");
+
+        // Setup
+        accountant.setLendingRate(1500);
+        accountant.setProtocolFeeRate(300);
+
+        // Track state at each step
+        uint256 step = 1;
+
+        // Step 1: Initial state
+        console.log("\n   Step %d: Initial state", step++);
+        _logState();
+
+        // Step 2: After time passes
+        skip(30 days);
+        console.log("\n   Step %d: After 30 days (no checkpoint)", step++);
+        _logState();
+
+        // Step 3: After rate change (triggers checkpoint)
+        accountant.setLendingRate(2000);
+        console.log("\n   Step %d: After rate change (checkpoint)", step++);
+        _logState();
+
+        // Step 4: After manual update
+        skip(15 days);
+        (uint96 currentRate,) = accountant.calculateExchangeRateWithInterest();
+        accountant.updateExchangeRate(currentRate);
+        console.log("\n   Step %d: After manual update", step++);
+        _logState();
+
+        // Step 5: After fee claim
+        (, uint128 feesOwed,,,,,,,,) = accountant.accountantState();
+        if (feesOwed > 0) {
+            deal(address(WETH), address(boringVault), feesOwed);
+            vm.startPrank(address(boringVault));
+            WETH.approve(address(accountant), feesOwed);
+            accountant.claimFees(WETH);
+            vm.stopPrank();
+        }
+        console.log("\n   Step %d: After fee claim", step++);
+        _logState();
+    }
+
+    function _logState() internal view {
+        (uint96 liveRate,) = accountant.calculateExchangeRateWithInterest();
+        (, uint128 feesOwed,, uint96 storedRate,,, uint64 lastUpdate,,,) = accountant.accountantState();
+        uint256 previewFees = accountant.previewFeesOwed();
+
+        console.log("     Live rate: %d", liveRate);
+        console.log("     Stored rate: %d", storedRate);
+        console.log("     Stored fees: %d", feesOwed);
+        console.log("     Preview fees: %d", previewFees);
+        console.log("     Last update: %d", lastUpdate);
     }
 
     // ========================================= HELPER FUNCTIONS =========================================

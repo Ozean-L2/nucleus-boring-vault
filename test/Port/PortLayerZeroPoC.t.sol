@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.22;
+pragma solidity 0.8.21;
 
 import { Test, stdStorage, StdStorage, stdError, console } from "@forge-std/Test.sol";
 import { DeployPortLayerZeroScript } from "../../script/DeployPortLayerZero.s.sol";
@@ -18,6 +18,9 @@ import {
 contract PortLayerZeroPoCTest is Test, DeployPortLayerZeroScript {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
+
+    uint256 constant SECONDS_PER_YEAR = 365 days;
+    uint256 constant BASIS_POINTS = 10_000;
 
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
@@ -72,6 +75,7 @@ contract PortLayerZeroPoCTest is Test, DeployPortLayerZeroScript {
         vm.startPrank(owner);
         l1Authority.setUserRole(solver, CAN_SOLVE_ROLE, true);
         l2Authority.setUserRole(solver, CAN_SOLVE_ROLE, true);
+        l1Teller.setDepositCap(type(uint256).max);
         vm.stopPrank();
 
         console.log("\n=== SETUP COMPLETE ===\n");
@@ -641,6 +645,234 @@ contract PortLayerZeroPoCTest is Test, DeployPortLayerZeroScript {
         console.log("   - Maintains adequate liquidity for withdrawals");
         console.log("   - Optimizes yield deployment per chain");
     }
+
+    function test_CrossChainLendingWithProtocolFees() external {
+        console.log("\n=== TEST: Cross-Chain Lending with Protocol Fees ===");
+
+        // 1. Setup same rates on both chains
+        console.log("\n1. SETUP LENDING RATES ON BOTH CHAINS");
+        uint256 lendingRate = 1000; // 10% APY
+        uint256 protocolFeeRate = 200; // 2% APY
+
+        vm.startPrank(owner);
+        l1Accountant.setLendingRate(lendingRate);
+        l1Accountant.setProtocolFeeRate(protocolFeeRate);
+        l2Accountant.setLendingRate(lendingRate);
+        l2Accountant.setProtocolFeeRate(protocolFeeRate);
+        vm.stopPrank();
+
+        console.log("   L1 & L2 Lending Rate: %s bps", lendingRate);
+        console.log("   L1 & L2 Protocol Fee: %s bps", protocolFeeRate);
+        console.log("   Total Borrower Rate: %s bps", lendingRate + protocolFeeRate);
+
+        // 2. Alice deposits on L1
+        console.log("\n2. ALICE DEPOSITS 1000 WETH ON L1");
+        uint256 depositAmount = 1000e18;
+
+        vm.startPrank(alice);
+        WETH.approve(address(l1Vault), depositAmount);
+        uint256 aliceShares = l1Teller.deposit(WETH, depositAmount, 0);
+        vm.stopPrank();
+
+        console.log("   Shares received: %s", aliceShares / 1e18);
+
+        // 3. Manager borrows entire deposit
+        console.log("\n3. MANAGER BORROWS ENTIRE DEPOSIT");
+        vm.prank(hexTrust);
+        bytes memory borrowData = abi.encodeCall(ERC20.transfer, (hexTrust, depositAmount));
+        l1Vault.manage(address(WETH), borrowData, 0);
+        console.log("   Manager borrowed: %s WETH", depositAmount / 1e18);
+
+        // 4. Time passes - interest accrues
+        console.log("\n4. TIME PASSES - 6 MONTHS");
+        skip(182.5 days);
+
+        // Calculate expected repayment
+        uint256 expectedInterest = depositAmount.mulDivDown(lendingRate * 182.5 days, SECONDS_PER_YEAR * BASIS_POINTS);
+        uint256 expectedProtocolFee =
+            depositAmount.mulDivDown(protocolFeeRate * 182.5 days, SECONDS_PER_YEAR * BASIS_POINTS);
+        uint256 totalRepayment = depositAmount + expectedInterest + expectedProtocolFee;
+
+        console.log("   Expected lending interest: %s WETH", expectedInterest / 1e18);
+        console.log("   Expected protocol fee: %s WETH", expectedProtocolFee / 1e18);
+        console.log("   Total repayment needed: %s WETH", totalRepayment / 1e18);
+
+        // 5. Alice bridges shares to L2
+        console.log("\n5. ALICE BRIDGES SHARES TO L2");
+        vm.prank(alice);
+        l1Vault.approve(address(l1Teller), aliceShares);
+
+        BridgeData memory bridgeData = BridgeData({
+            chainSelector: L2_EID,
+            destinationChainReceiver: alice,
+            bridgeFeeToken: ERC20(NATIVE),
+            messageGas: 200_000,
+            data: ""
+        });
+
+        vm.prank(alice);
+        l1Teller.bridge{ value: 0.01 ether }(aliceShares, bridgeData);
+        _simulateLayerZeroDelivery(L1_EID, L2_EID, aliceShares, alice);
+
+        // 6. Alice requests withdrawal on L2
+        console.log("\n6. ALICE REQUESTS WITHDRAWAL ON L2");
+        uint256 currentRate = l2Accountant.getRateInQuoteSafe(WETH);
+        console.log("   Current exchange rate: %s", currentRate / 1e18);
+        console.log("   Value of shares: %s WETH", aliceShares.mulDivDown(currentRate, 1e18) / 1e18);
+
+        vm.startPrank(alice);
+        AtomicQueue.AtomicRequest memory req = AtomicQueue.AtomicRequest({
+            deadline: uint64(block.timestamp + 1 days),
+            atomicPrice: uint88(currentRate),
+            offerAmount: uint96(aliceShares),
+            inSolve: false
+        });
+        l2Vault.approve(address(l2AtomicQueue), aliceShares);
+        l2AtomicQueue.updateAtomicRequest(l2Vault, WETH, req);
+        vm.stopPrank();
+
+        // 7. Manager repays with interest on L2
+        console.log("\n7. MANAGER REPAYS ON L2");
+        uint256 withdrawalAmount = aliceShares.mulDivDown(currentRate, 1e18);
+        deal(address(WETH), hexTrust, withdrawalAmount);
+
+        vm.startPrank(hexTrust);
+        WETH.approve(address(l2AtomicSolver), withdrawalAmount);
+        address[] memory users = new address[](1);
+        users[0] = alice;
+
+        uint256 aliceBalanceBefore = WETH.balanceOf(alice);
+        l2AtomicSolver.p2pSolve(l2AtomicQueue, l2Vault, WETH, users, 0, type(uint256).max);
+        uint256 aliceBalanceAfter = WETH.balanceOf(alice);
+        vm.stopPrank();
+
+        uint256 aliceReceived = aliceBalanceAfter - aliceBalanceBefore;
+        console.log("   Alice received: %s WETH", aliceReceived / 1e18);
+        console.log("   Profit from lending: %s WETH", (aliceReceived - depositAmount) / 1e18);
+
+        // Verify Alice received principal + interest
+        assertGt(aliceReceived, depositAmount, "Alice should receive more than deposit");
+    }
+
+    function test_ProtocolFeeClaimingAcrossChains() external {
+    console.log("\n=== TEST: Protocol Fee Claiming Across Chains ===");
+
+    // Deposits on both chains
+    console.log("\n1. DEPOSITS ON BOTH CHAINS");
+    vm.startPrank(alice);
+    WETH.approve(address(l1Vault), 500e18);
+    l1Teller.deposit(WETH, 500e18, 0);
+    vm.stopPrank();
+
+    // For L2, properly mint shares
+    vm.prank(owner);
+    l2Vault.enter(address(0), WETH, 0, alice, 500e18); // Mint 500e18 shares
+    deal(address(WETH), address(l2Vault), 500e18); // Give vault the WETH
+
+    console.log("   L1 Vault: 500 WETH");
+    console.log("   L2 Vault: 500 WETH");
+    
+    // Setup rates AFTER deposits exist
+    vm.startPrank(owner);
+    l1Accountant.setLendingRate(1000);
+    l1Accountant.setProtocolFeeRate(300); // 3% protocol fee
+    l2Accountant.setLendingRate(1000);
+    l2Accountant.setProtocolFeeRate(300);
+    vm.stopPrank();
+
+    // Time passes
+    skip(365 days);
+
+    // Check fees on both chains
+    console.log("\n2. PROTOCOL FEES AFTER 1 YEAR");
+    uint256 l1Fees = l1Accountant.previewFeesOwed();
+    uint256 l2Fees = l2Accountant.previewFeesOwed();
+
+    console.log("   L1 Protocol fees: %s WETH", l1Fees / 1e18);
+    console.log("   L2 Protocol fees: %s WETH", l2Fees / 1e18);
+
+    // Update exchange rates to checkpoint fees
+    console.log("\n3. CHECKPOINT AND CLAIM FEES");
+
+    // L1 claim
+    vm.prank(owner);
+    (uint96 l1Rate,) = l1Accountant.calculateExchangeRateWithInterest();
+    l1Accountant.updateExchangeRate(l1Rate);
+
+    deal(address(WETH), address(l1Vault), l1Fees);
+    vm.startPrank(address(l1Vault));
+    WETH.approve(address(l1Accountant), l1Fees);
+    l1Accountant.claimFees(WETH);
+    vm.stopPrank();
+
+    // L2 claim
+    vm.prank(owner);
+    (uint96 l2Rate,) = l2Accountant.calculateExchangeRateWithInterest();
+    l2Accountant.updateExchangeRate(l2Rate);
+
+    deal(address(WETH), address(l2Vault), l2Fees);
+    vm.startPrank(address(l2Vault));
+    WETH.approve(address(l2Accountant), l2Fees);
+    l2Accountant.claimFees(WETH);
+    vm.stopPrank();
+
+    // Verify fees were claimed
+    (address l1Payout,,,,,,,,,) = l1Accountant.accountantState();
+    (address l2Payout,,,,,,,,,) = l2Accountant.accountantState();
+
+    console.log("   L1 Payout received: %s WETH", WETH.balanceOf(l1Payout) / 1e18);
+    console.log("   L2 Payout received: %s WETH", WETH.balanceOf(l2Payout) / 1e18);
+
+    assertGt(WETH.balanceOf(l1Payout), 0, "L1 payout should receive fees");
+    assertGt(WETH.balanceOf(l2Payout), 0, "L2 payout should receive fees");
+}
+
+    function test_CrossChainRateSynchronization() external {
+    console.log("\n=== TEST: Cross-Chain Rate Synchronization ===");
+
+    // First, create some deposits so interest can accrue
+    vm.startPrank(alice);
+    WETH.approve(address(l1Vault), 100e18);
+    l1Teller.deposit(WETH, 100e18, 0);
+    vm.stopPrank();
+    
+    // For L2, we need to mint shares properly
+    vm.prank(owner);
+    l2Vault.enter(address(0), WETH, 0, alice, 100e18); // Mint shares on L2
+
+    // Verify rates start synchronized
+    console.log("\n1. INITIAL RATES");
+    uint256 l1Rate = l1Accountant.getRate();
+    uint256 l2Rate = l2Accountant.getRate();
+    assertEq(l1Rate, l2Rate, "Rates should start equal");
+    console.log("   L1 Rate: %s", l1Rate);
+    console.log("   L2 Rate: %s", l2Rate);
+
+    // Set different lending rates (simulating different chain conditions)
+    console.log("\n2. SET DIFFERENT RATES PER CHAIN");
+    vm.startPrank(owner);
+    l1Accountant.setLendingRate(1000); // 10% on L1
+    l2Accountant.setLendingRate(1500); // 15% on L2
+    vm.stopPrank();
+
+    // Time passes
+    skip(365 days);
+
+    // Check diverged rates
+    console.log("\n3. RATES AFTER 1 YEAR");
+    l1Rate = l1Accountant.getRate();
+    l2Rate = l2Accountant.getRate();
+
+    console.log("   L1 Rate (10% APY): %s", l1Rate / 1e18);
+    console.log("   L2 Rate (15% APY): %s", l2Rate / 1e18);
+
+    assertGt(l2Rate, l1Rate, "L2 rate should be higher");
+
+    console.log("\n4. IMPLICATIONS");
+    console.log("   - Each chain can have different lending rates");
+    console.log("   - Shares bridged maintain their value based on origin chain");
+    console.log("   - Arbitrage opportunities may exist");
+}
 
     function _simulateLayerZeroDelivery(uint32 srcEid, uint32 dstEid, uint256 shares, address receiver) internal {
         bytes memory payload = abi.encode(shares, receiver);

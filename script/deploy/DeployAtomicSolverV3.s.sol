@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.22;
+pragma solidity 0.8.21;
 
 import { AtomicSolverV3 } from "../../src/atomic-queue/AtomicSolverV3.sol";
 import { RolesAuthority } from "@solmate/auth/authorities/RolesAuthority.sol";

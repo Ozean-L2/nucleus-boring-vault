@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.22;
+pragma solidity 0.8.21;
 
 import { ERC20 } from "@solmate/tokens/ERC20.sol";
 import { WETH } from "@solmate/tokens/WETH.sol";
@@ -34,6 +34,7 @@ contract TellerWithMultiAssetSupport is Auth, BeforeTransferHook, ReentrancyGuar
 
     // ========================================= STATE =========================================
 
+    uint256 public depositCap;
     /**
      * @notice Mapping ERC20s to an isSupported bool.
      */
@@ -100,6 +101,7 @@ contract TellerWithMultiAssetSupport is Auth, BeforeTransferHook, ReentrancyGuar
     event BulkDeposit(address indexed asset, uint256 depositAmount);
     event BulkWithdraw(address indexed asset, uint256 shareAmount);
     event DepositRefunded(uint256 indexed nonce, bytes32 depositHash, address indexed user);
+    event DepositCapUpdated(uint256 oldCap, uint256 newCap);
 
     //============================== IMMUTABLES ===============================
 
@@ -125,6 +127,11 @@ contract TellerWithMultiAssetSupport is Auth, BeforeTransferHook, ReentrancyGuar
     }
 
     // ========================================= ADMIN FUNCTIONS =========================================
+    function setDepositCap(uint256 _depositCap) external requiresAuth {
+        uint256 oldCap = depositCap;
+        depositCap = _depositCap;
+        emit DepositCapUpdated(oldCap, _depositCap);
+    }
 
     /**
      * @notice Pause this contract, which prevents future calls to `deposit` and `depositWithPermit`.
@@ -350,8 +357,18 @@ contract TellerWithMultiAssetSupport is Auth, BeforeTransferHook, ReentrancyGuar
         returns (uint256 shares)
     {
         if (depositAmount == 0) revert TellerWithMultiAssetSupport__ZeroAssets();
+
+        // Calculate shares to mint
         shares = depositAmount.mulDivDown(ONE_SHARE, accountant.getRateInQuoteSafe(depositAsset));
         if (shares < minimumMint) revert TellerWithMultiAssetSupport__MinimumMintNotMet();
+
+        uint256 shareValueInBase = shares.mulDivDown(
+            accountant.getRate(), // Exchange rate in base
+            ONE_SHARE
+        );
+        uint256 currentTotalValue = vault.totalSupply().mulDivDown(accountant.getRate(), ONE_SHARE);
+        require(currentTotalValue + shareValueInBase <= depositCap, "Deposit cap exceeded");
+
         vault.enter(msg.sender, depositAsset, depositAmount, to, shares);
     }
 

@@ -1,4 +1,4 @@
-pragma solidity 0.8.22;
+pragma solidity 0.8.21;
 
 import { Script } from "@forge-std/Script.sol";
 import { BoringVault } from "src/base/BoringVault.sol";

@@ -12,7 +12,7 @@ contract DeployAtomicSolverV3 is BaseScript {
 
         bytes memory creationCode = type(AtomicSolverV3).creationCode;
         bytes memory constructorArgs = abi.encode(owner, rolesAuthority);
-        bytes32 salt = 0x9bac910c72debe007de61c000000000000000000000000000000000000000001;
+        bytes32 salt = 0x9cae910c72debe007de61c000000000000000000000000000000000000000001;
 
         return CREATEX.deployCreate3(salt, abi.encodePacked(creationCode, constructorArgs));
     }

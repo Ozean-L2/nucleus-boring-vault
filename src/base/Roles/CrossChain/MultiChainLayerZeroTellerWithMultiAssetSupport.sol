@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { MultiChainTellerBase, MultiChainTellerBase_MessagesNotAllowedFrom } from "./MultiChainTellerBase.sol";
 import { BridgeData, ERC20 } from "./CrossChainTellerBase.sol";
@@ -67,6 +67,8 @@ contract MultiChainLayerZeroTellerWithMultiAssetSupport is MultiChainTellerBase,
         if (!selectorToChains[_origin.srcEid].allowMessagesFrom) {
             revert MultiChainTellerBase_MessagesNotAllowedFrom(_origin.srcEid);
         }
+
+        accountant.checkpoint();
 
         // Decode the payload to get the message
         (uint256 shareAmount, address receiver) = abi.decode(payload, (uint256, address));

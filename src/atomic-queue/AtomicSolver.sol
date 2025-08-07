@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { ERC20, SafeTransferLib } from "./AtomicQueue.sol";
 import { IAtomicSolver } from "./IAtomicSolver.sol";
@@ -12,7 +12,6 @@ import { SafeTransferLib } from "@solmate/utils/SafeTransferLib.sol";
 /**
  * @title AtomicSolver
  * @author
- * @custom:security-contact security@molecularlabs.io
  */
 contract AtomicSolver is IAtomicSolver, Owned, ERC721Holder {
     using Address for address;

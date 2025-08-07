@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { GenericRateProvider } from "./../../../src/helper/GenericRateProvider.sol";
 import { SWBTC } from "./../../../src/helper/Constants.sol";

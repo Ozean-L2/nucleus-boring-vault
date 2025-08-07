@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { BoringVault } from "src/base/BoringVault.sol";
 import { SafeTransferLib } from "@solmate/utils/SafeTransferLib.sol";
@@ -58,7 +58,7 @@ contract DeployPortProofOfConceptScript is Script, MainnetAddresses {
 
         rolesAuthority = new RolesAuthority(owner, Authority(address(0)));
 
-        atomicQueue = new AtomicQueue();
+        atomicQueue = new AtomicQueue(address(accountant));
 
         atomicSolverV3 = new AtomicSolverV3(address(this), rolesAuthority);
 

@@ -1,4 +1,4 @@
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { IRateProvider } from "src/interfaces/IRateProvider.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";

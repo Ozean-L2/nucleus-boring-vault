@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { AtomicQueue, ERC20, SafeTransferLib } from "./AtomicQueue.sol";
 import { IAtomicSolver } from "./IAtomicSolver.sol";
@@ -10,7 +10,6 @@ import { TellerWithMultiAssetSupport } from "src/base/Roles/TellerWithMultiAsset
 /**
  * @title AtomicSolverV3
  * @author crispymangoes
- * @custom:security-contact security@molecularlabs.io
  */
 contract AtomicSolverV3 is IAtomicSolver, Auth {
     using SafeTransferLib for ERC20;

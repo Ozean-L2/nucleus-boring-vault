@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { MainnetAddresses } from "test/resources/MainnetAddresses.sol";
 import { BoringVault } from "src/base/BoringVault.sol";
@@ -103,7 +103,7 @@ contract EtherFiLiquid1MigrationTest is Test, MainnetAddresses {
             new GenericRateProvider(liquidV1PriceRouter, selector, yt, bytes32(amount), quote, 0, 0, 0, 0, 0);
 
         // Deploy queue.
-        atomic_queue = new AtomicQueue();
+        atomic_queue = new AtomicQueue(address(accountant));
         atomic_solver = new AtomicSolver(address(this), vault);
 
         rolesAuthority = new RolesAuthority(address(this), Authority(address(0)));
@@ -112,6 +112,7 @@ contract EtherFiLiquid1MigrationTest is Test, MainnetAddresses {
         manager.setAuthority(rolesAuthority);
         accountant.setAuthority(rolesAuthority);
         teller.setAuthority(rolesAuthority);
+        teller.setDepositCap(type(uint256).max);
         vm.stopPrank();
 
         // Setup roles authority.
@@ -178,7 +179,7 @@ contract EtherFiLiquid1MigrationTest is Test, MainnetAddresses {
             ADMIN_ROLE, address(accountant), AccountantWithRateProviders.updateLower.selector, true
         );
         rolesAuthority.setRoleCapability(
-            ADMIN_ROLE, address(accountant), AccountantWithRateProviders.updateManagementFee.selector, true
+            ADMIN_ROLE, address(accountant), AccountantWithRateProviders.setManagementFeeRate.selector, true
         );
         rolesAuthority.setRoleCapability(
             ADMIN_ROLE, address(accountant), AccountantWithRateProviders.updatePayoutAddress.selector, true

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { MainnetAddresses } from "test/resources/MainnetAddresses.sol";
 import { BoringVault } from "src/base/BoringVault.sol";
@@ -14,6 +14,19 @@ import { RolesAuthority, Authority } from "@solmate/auth/authorities/RolesAuthor
 import { AtomicSolverV3, AtomicQueue } from "src/atomic-queue/AtomicSolverV3.sol";
 
 import { Test, stdStorage, StdStorage, stdError, console } from "@forge-std/Test.sol";
+
+// Mock Keyring contract for testing
+contract MockKeyring {
+    mapping(address => mapping(uint256 => bool)) public credentials;
+
+    function setCredential(address entity, uint256 policyId, bool status) external {
+        credentials[entity][policyId] = status;
+    }
+
+    function checkCredential(uint256 policyId, address entity) external view returns (bool) {
+        return credentials[entity][policyId];
+    }
+}
 
 contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
     using SafeTransferLib for ERC20;
@@ -41,6 +54,13 @@ contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
     address public solver = vm.addr(54);
     uint256 ONE_SHARE;
 
+    MockKeyring public mockKeyring;
+    uint256 public constant TEST_POLICY_ID = 7;
+    address public kycUser = vm.addr(1111);
+    address public nonKycUser = vm.addr(2222);
+    address public manualWhitelistUser = vm.addr(3333);
+    address public contractAddress = vm.addr(4444); // Mock AMM/protocol
+
     function setUp() external {
         // Setup forked environment.
         string memory rpcKey = "MAINNET_RPC_URL";
@@ -58,12 +78,13 @@ contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
 
         rolesAuthority = new RolesAuthority(address(this), Authority(address(0)));
 
-        atomicQueue = new AtomicQueue();
+        atomicQueue = new AtomicQueue(address(accountant));
         atomicSolverV3 = new AtomicSolverV3(address(this), rolesAuthority);
 
         boringVault.setAuthority(rolesAuthority);
         accountant.setAuthority(rolesAuthority);
         teller.setAuthority(rolesAuthority);
+        teller.setDepositCap(type(uint256).max);
 
         rolesAuthority.setRoleCapability(MINTER_ROLE, address(boringVault), BoringVault.enter.selector, true);
         rolesAuthority.setRoleCapability(BURNER_ROLE, address(boringVault), BoringVault.exit.selector, true);
@@ -108,6 +129,20 @@ contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
 
         accountant.setRateProviderData(EETH, true, address(0));
         accountant.setRateProviderData(WEETH, false, address(WEETH_RATE_PROVIDER));
+
+        // Deploy mock Keyring
+        mockKeyring = new MockKeyring();
+
+        // Setup KYC for test users
+        mockKeyring.setCredential(kycUser, TEST_POLICY_ID, true);
+        mockKeyring.setCredential(address(this), TEST_POLICY_ID, true); // Test contract has KYC
+        // nonKycUser has no KYC by default
+
+        // Fund test users
+        deal(address(WETH), kycUser, 100e18);
+        deal(address(WETH), nonKycUser, 100e18);
+        deal(address(WETH), manualWhitelistUser, 100e18);
+        deal(address(WETH), contractAddress, 100e18);
     }
 
     function testDepositReverting(uint256 amount) external {
@@ -347,6 +382,7 @@ contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
         amount = bound(amount, 0.0001e18, 10_000e18);
 
         address user = vm.addr(9);
+        mockKeyring.setCredential(user, TEST_POLICY_ID, true);
         uint256 wETH_amount = amount;
         deal(address(WETH), user, wETH_amount);
 
@@ -358,12 +394,11 @@ contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
         // Share lock period is not set, so user can submit withdraw request immediately.
         AtomicQueue.AtomicRequest memory req = AtomicQueue.AtomicRequest({
             deadline: uint64(block.timestamp + 1 days),
-            atomicPrice: 1e18,
             offerAmount: uint96(shares),
             inSolve: false
         });
         boringVault.approve(address(atomicQueue), shares);
-        atomicQueue.updateAtomicRequest(boringVault, WETH, req);
+        atomicQueue.updateAtomicRequest(boringVault, WETH, req.deadline, req.offerAmount);
         vm.stopPrank();
 
         // Solver approves solver contract to spend enough assets to cover withdraw.
@@ -492,10 +527,471 @@ contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
         boringVault.transfer(address(this), 1);
     }
 
+    function testKeyringMode() external {
+        // Setup Keyring mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        uint256 depositAmount = 1e18;
+
+        // Test 1: KYC user can deposit
+        vm.startPrank(kycUser);
+        WETH.approve(address(boringVault), depositAmount);
+        uint256 shares = teller.deposit(WETH, depositAmount, 0);
+        assertGt(shares, 0, "KYC user should receive shares");
+        vm.stopPrank();
+
+        // Test 2: Non-KYC user cannot deposit
+        vm.startPrank(nonKycUser);
+        WETH.approve(address(boringVault), depositAmount);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TellerWithMultiAssetSupport.TellerWithMultiAssetSupport__KeyringCredentialInvalid.selector
+            )
+        );
+        teller.deposit(WETH, depositAmount, 0);
+        vm.stopPrank();
+
+        // Test 3: Contract whitelist works in Keyring mode
+        teller.updateContractWhitelist(toArray(contractAddress), true);
+        vm.startPrank(contractAddress);
+        WETH.approve(address(boringVault), depositAmount);
+        shares = teller.deposit(WETH, depositAmount, 0);
+        assertGt(shares, 0, "Whitelisted contract should be able to deposit");
+        vm.stopPrank();
+    }
+
+    function testManualWhitelistMode() external {
+        // Setup Manual Whitelist mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.MANUAL_WHITELIST);
+
+        uint256 depositAmount = 1e18;
+
+        // Test 1: Non-whitelisted user cannot deposit
+        vm.startPrank(manualWhitelistUser);
+        WETH.approve(address(boringVault), depositAmount);
+        vm.expectRevert(
+            abi.encodeWithSelector(TellerWithMultiAssetSupport.TellerWithMultiAssetSupport__NotWhitelisted.selector)
+        );
+        teller.deposit(WETH, depositAmount, 0);
+        vm.stopPrank();
+
+        // Test 2: Add user to whitelist
+        teller.updateManualWhitelist(toArray(manualWhitelistUser), true);
+
+        // Test 3: Whitelisted user can deposit
+        vm.startPrank(manualWhitelistUser);
+        uint256 shares = teller.deposit(WETH, depositAmount, 0);
+        assertGt(shares, 0, "Whitelisted user should receive shares");
+        vm.stopPrank();
+
+        // Test 4: Remove from whitelist
+        teller.updateManualWhitelist(toArray(manualWhitelistUser), false);
+
+        vm.startPrank(manualWhitelistUser);
+        vm.expectRevert(
+            abi.encodeWithSelector(TellerWithMultiAssetSupport.TellerWithMultiAssetSupport__NotWhitelisted.selector)
+        );
+        teller.deposit(WETH, depositAmount, 0);
+        vm.stopPrank();
+    }
+
+    function testDisabledMode() external {
+        // Default mode should be DISABLED
+        assertEq(uint256(teller.accessControlMode()), 0, "Default should be DISABLED");
+
+        uint256 depositAmount = 1e18;
+
+        // Anyone can deposit in disabled mode
+        vm.startPrank(nonKycUser);
+        WETH.approve(address(boringVault), depositAmount);
+        uint256 shares = teller.deposit(WETH, depositAmount, 0);
+        assertGt(shares, 0, "Any user should be able to deposit in DISABLED mode");
+        vm.stopPrank();
+    }
+
+    function testModeTransitions() external {
+        uint256 depositAmount = 1e18;
+
+        // Start in DISABLED mode
+        vm.startPrank(kycUser);
+        WETH.approve(address(boringVault), depositAmount * 3);
+
+        // Deposit in DISABLED mode
+        teller.deposit(WETH, depositAmount, 0);
+
+        // Switch to KEYRING mode
+        vm.stopPrank();
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        // KYC user can still deposit
+        vm.startPrank(kycUser);
+        teller.deposit(WETH, depositAmount, 0);
+        vm.stopPrank();
+
+        // Non-KYC user cannot
+        vm.startPrank(nonKycUser);
+        WETH.approve(address(boringVault), depositAmount);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TellerWithMultiAssetSupport.TellerWithMultiAssetSupport__KeyringCredentialInvalid.selector
+            )
+        );
+        teller.deposit(WETH, depositAmount, 0);
+        vm.stopPrank();
+
+        // Switch to MANUAL_WHITELIST mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.MANUAL_WHITELIST);
+        teller.updateManualWhitelist(toArray(kycUser), true);
+
+        // KYC user can deposit because they're manually whitelisted
+        vm.startPrank(kycUser);
+        teller.deposit(WETH, depositAmount, 0);
+        vm.stopPrank();
+    }
+
+    function testBulkDepositAccessControl() external {
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        uint256 depositAmount = 1e18;
+
+        deal(address(WETH), address(this), depositAmount);
+
+        WETH.approve(address(boringVault), depositAmount);
+
+        // Test bulkDeposit checks the 'to' parameter
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TellerWithMultiAssetSupport.TellerWithMultiAssetSupport__KeyringCredentialInvalid.selector
+            )
+        );
+        teller.bulkDeposit(WETH, depositAmount, 0, nonKycUser); // 'to' has no KYC
+
+        // Should work for KYC user
+        uint256 shares = teller.bulkDeposit(WETH, depositAmount, 0, kycUser);
+        assertGt(shares, 0, "Should deposit to KYC user");
+    }
+
+    function testBulkWithdrawAccessControl() external {
+        // First deposit some shares
+        uint256 depositAmount = 10e18;
+        deal(address(WETH), address(this), depositAmount);
+        WETH.approve(address(boringVault), depositAmount);
+        uint256 shares = teller.deposit(WETH, depositAmount, 0);
+
+        // Transfer shares to non-KYC user
+        boringVault.transfer(nonKycUser, shares);
+
+        // Enable Keyring mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        // Give solver role to nonKycUser for testing
+        rolesAuthority.setUserRole(nonKycUser, SOLVER_ROLE, true);
+
+        // Non-KYC user cannot withdraw
+        vm.startPrank(nonKycUser);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TellerWithMultiAssetSupport.TellerWithMultiAssetSupport__KeyringCredentialInvalid.selector
+            )
+        );
+        teller.bulkWithdraw(WETH, shares, 0, nonKycUser);
+        vm.stopPrank();
+
+        // Give KYC to user and retry
+        mockKeyring.setCredential(nonKycUser, TEST_POLICY_ID, true);
+
+        vm.startPrank(nonKycUser);
+        uint256 assetsOut = teller.bulkWithdraw(WETH, shares, 0, nonKycUser);
+        assertGt(assetsOut, 0, "KYC user should be able to withdraw");
+        vm.stopPrank();
+    }
+
+    function testAccessControlEvents() external {
+        // Test AccessControlModeUpdated event
+        vm.expectEmit(true, true, false, true);
+        emit TellerWithMultiAssetSupport.AccessControlModeUpdated(
+            TellerWithMultiAssetSupport.AccessControlMode.DISABLED,
+            TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC
+        );
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+
+        // Test KeyringConfigUpdated event
+        vm.expectEmit(true, true, false, true);
+        emit TellerWithMultiAssetSupport.KeyringConfigUpdated(address(mockKeyring), TEST_POLICY_ID);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        // Test ManualWhitelistUpdated event
+        vm.expectEmit(true, true, false, true);
+        emit TellerWithMultiAssetSupport.ManualWhitelistUpdated(kycUser, true);
+        teller.updateManualWhitelist(toArray(kycUser), true);
+
+        // Test ContractWhitelistUpdated event
+        vm.expectEmit(true, true, false, true);
+        emit TellerWithMultiAssetSupport.ContractWhitelistUpdated(contractAddress, true);
+        teller.updateContractWhitelist(toArray(contractAddress), true);
+    }
+
+    function testDepositWithPermitAccessControl() external {
+        // Setup Keyring mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        uint256 userKey = 9999;
+        address user = vm.addr(userKey);
+
+        // Calculate weETH amount based on rate
+        uint256 depositAmount = 1e18;
+        uint256 weETH_amount = depositAmount.mulDivDown(1e18, IRateProvider(WEETH_RATE_PROVIDER).getRate());
+
+        // Give user weETH
+        deal(address(WEETH), user, weETH_amount);
+
+        // Create permit signature for weETH
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                WEETH.DOMAIN_SEPARATOR(),
+                keccak256(
+                    abi.encode(
+                        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                        user,
+                        address(boringVault),
+                        weETH_amount,
+                        WEETH.nonces(user),
+                        block.timestamp
+                    )
+                )
+            )
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(userKey, digest);
+
+        // Non-KYC user cannot deposit with permit
+        vm.startPrank(user);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                TellerWithMultiAssetSupport.TellerWithMultiAssetSupport__KeyringCredentialInvalid.selector
+            )
+        );
+        teller.depositWithPermit(WEETH, weETH_amount, 0, block.timestamp, v, r, s);
+        vm.stopPrank();
+
+        // Give user KYC and retry
+        mockKeyring.setCredential(user, TEST_POLICY_ID, true);
+
+        vm.startPrank(user);
+        uint256 shares = teller.depositWithPermit(WEETH, weETH_amount, 0, block.timestamp, v, r, s);
+        assertGt(shares, 0, "KYC user should be able to deposit with permit");
+        vm.stopPrank();
+    }
+
+    function testContractWhitelistBothModes() external {
+        uint256 depositAmount = 1e18;
+
+        // Test in KEYRING mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+        teller.updateContractWhitelist(toArray(contractAddress), true);
+
+        vm.startPrank(contractAddress);
+        WETH.approve(address(boringVault), depositAmount * 2);
+        uint256 shares1 = teller.deposit(WETH, depositAmount, 0);
+        assertGt(shares1, 0, "Contract should deposit in Keyring mode");
+        vm.stopPrank();
+
+        // Switch to MANUAL_WHITELIST mode - contract whitelist should still work
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.MANUAL_WHITELIST);
+
+        vm.startPrank(contractAddress);
+        uint256 shares2 = teller.deposit(WETH, depositAmount, 0);
+        assertGt(shares2, 0, "Contract should deposit in Manual mode");
+        vm.stopPrank();
+    }
+
+    function testTransfersUnrestricted() external {
+        // Deposit with KYC user in KEYRING mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        vm.startPrank(kycUser);
+        WETH.approve(address(boringVault), 1e18);
+        uint256 shares = teller.deposit(WETH, 1e18, 0);
+
+        // Transfer to non-KYC user works
+        boringVault.transfer(nonKycUser, shares);
+        vm.stopPrank();
+
+        // Non-KYC user can transfer
+        vm.prank(nonKycUser);
+        boringVault.transfer(manualWhitelistUser, shares / 2);
+
+        assertEq(boringVault.balanceOf(manualWhitelistUser), shares / 2);
+    }
+
+    function testTransfersUnrestrictedWithAccessControl() external {
+        // Deposit with KYC user
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        vm.startPrank(kycUser);
+        WETH.approve(address(boringVault), 1e18);
+        uint256 shares = teller.deposit(WETH, 1e18, 0);
+
+        // Transfer to non-KYC user should work
+        boringVault.transfer(nonKycUser, shares);
+        assertEq(boringVault.balanceOf(nonKycUser), shares, "Transfer should work");
+        vm.stopPrank();
+
+        // Non-KYC user can transfer to anyone
+        vm.startPrank(nonKycUser);
+        boringVault.transfer(manualWhitelistUser, shares / 2);
+        assertEq(boringVault.balanceOf(manualWhitelistUser), shares / 2, "Transfer should work");
+        vm.stopPrank();
+    }
+
+    function testManualWhitelistModeComplete() external {
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.MANUAL_WHITELIST);
+
+        // Test depositWithPermit
+        address user = vm.addr(8888);
+        uint256 weethAmount = 968_199_670_816_024_612; // Fixed amount to avoid repeated calculations
+        deal(address(WEETH), user, weethAmount);
+
+        bytes32 digest = keccak256(
+            abi.encodePacked(
+                "\x19\x01",
+                WEETH.DOMAIN_SEPARATOR(),
+                keccak256(
+                    abi.encode(
+                        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                        user,
+                        address(boringVault),
+                        weethAmount,
+                        WEETH.nonces(user),
+                        block.timestamp
+                    )
+                )
+            )
+        );
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(8888, digest);
+
+        // Should fail without whitelist
+        vm.startPrank(user);
+        vm.expectRevert(
+            abi.encodeWithSelector(TellerWithMultiAssetSupport.TellerWithMultiAssetSupport__NotWhitelisted.selector)
+        );
+        teller.depositWithPermit(WEETH, weethAmount, 0, block.timestamp, v, r, s);
+        vm.stopPrank();
+
+        // Add to whitelist and retry
+        teller.updateManualWhitelist(toArray(user), true);
+
+        vm.prank(user);
+        assertGt(teller.depositWithPermit(WEETH, weethAmount, 0, block.timestamp, v, r, s), 0);
+
+        // Test bulkDeposit
+        address freshUser = vm.addr(7777);
+        teller.updateManualWhitelist(toArray(address(this)), true);
+        deal(address(WETH), address(this), 1e18);
+        WETH.approve(address(boringVault), 1e18);
+
+        // Should fail for non-whitelisted recipient
+        vm.expectRevert(
+            abi.encodeWithSelector(TellerWithMultiAssetSupport.TellerWithMultiAssetSupport__NotWhitelisted.selector)
+        );
+        teller.bulkDeposit(WETH, 1e18, 0, freshUser);
+
+        // Whitelist recipient and deposit
+        teller.updateManualWhitelist(toArray(freshUser), true);
+        uint256 shares = teller.bulkDeposit(WETH, 1e18, 0, freshUser);
+
+        // Test bulkWithdraw
+        vm.prank(freshUser);
+        boringVault.transfer(address(this), shares);
+
+        rolesAuthority.setUserRole(address(this), SOLVER_ROLE, true);
+        assertGt(teller.bulkWithdraw(WETH, shares, 0, address(this)), 0);
+    }
+
+    function testContractWhitelistAcrossModes() external {
+        uint256 depositAmount = 1e18;
+        address protocol = vm.addr(5555);
+        deal(address(WETH), protocol, depositAmount * 3);
+
+        // Add to contract whitelist
+        teller.updateContractWhitelist(toArray(protocol), true);
+
+        // Test in KEYRING mode (protocol has no KYC)
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        vm.startPrank(protocol);
+        WETH.approve(address(boringVault), depositAmount * 3);
+        uint256 shares1 = teller.deposit(WETH, depositAmount, 0);
+        assertGt(shares1, 0, "Contract whitelist should work in Keyring mode");
+        vm.stopPrank();
+
+        // Test in MANUAL_WHITELIST mode (protocol not in manual whitelist)
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.MANUAL_WHITELIST);
+
+        vm.startPrank(protocol);
+        uint256 shares2 = teller.deposit(WETH, depositAmount, 0);
+        assertGt(shares2, 0, "Contract whitelist should work in Manual mode");
+        vm.stopPrank();
+
+        // Test in DISABLED mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.DISABLED);
+
+        vm.startPrank(protocol);
+        uint256 shares3 = teller.deposit(WETH, depositAmount, 0);
+        assertGt(shares3, 0, "Should work in Disabled mode");
+        vm.stopPrank();
+    }
+
+    function testTransfersUnrestrictedAllModes() external {
+        uint256 depositAmount = 1e18;
+
+        // Deposit with KYC user in KEYRING mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.KEYRING_KYC);
+        teller.setKeyringConfig(address(mockKeyring), TEST_POLICY_ID);
+
+        vm.startPrank(kycUser);
+        WETH.approve(address(boringVault), depositAmount);
+        uint256 shares = teller.deposit(WETH, depositAmount, 0);
+
+        // Transfer to non-KYC user
+        boringVault.transfer(nonKycUser, shares);
+        assertEq(boringVault.balanceOf(nonKycUser), shares, "Transfer should work");
+        vm.stopPrank();
+
+        // Non-KYC user transfers to non-whitelisted user
+        address randomUser = vm.addr(9876);
+        vm.prank(nonKycUser);
+        boringVault.transfer(randomUser, shares / 2);
+        assertEq(boringVault.balanceOf(randomUser), shares / 2, "Transfer should work");
+
+        // Switch to MANUAL_WHITELIST mode
+        teller.setAccessControlMode(TellerWithMultiAssetSupport.AccessControlMode.MANUAL_WHITELIST);
+
+        // Random user (not whitelisted) can still transfer
+        vm.prank(randomUser);
+        boringVault.transfer(kycUser, shares / 4);
+        assertEq(boringVault.balanceOf(kycUser), shares / 4, "Transfer should work");
+    }
+
     // ========================================= HELPER FUNCTIONS =========================================
 
     function _startFork(string memory rpcKey, uint256 blockNumber) internal returns (uint256 forkId) {
         forkId = vm.createFork(vm.envString(rpcKey), blockNumber);
         vm.selectFork(forkId);
+    }
+
+    function toArray(address addr) internal pure returns (address[] memory) {
+        address[] memory arr = new address[](1);
+        arr[0] = addr;
+        return arr;
     }
 }

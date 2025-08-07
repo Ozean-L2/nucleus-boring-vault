@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { CrossChainBaseTest, CrossChainTellerBase, ERC20, BridgeData } from "./CrossChainBase.t.sol";
 import { CrossChainOPTellerWithMultiAssetSupport } from
@@ -50,6 +50,7 @@ contract CrossChainOPTellerWithMultiAssetSupportTest is CrossChainBaseTest {
         CrossChainBaseTest.setUp();
         CrossChainOPTellerWithMultiAssetSupport(sourceTellerAddr).setGasBounds(0, uint32(CHAIN_MESSAGE_GAS_LIMIT));
         CrossChainOPTellerWithMultiAssetSupport(destinationTellerAddr).setGasBounds(0, uint32(CHAIN_MESSAGE_GAS_LIMIT));
+        CrossChainOPTellerWithMultiAssetSupport(sourceTellerAddr).setDepositCap(type(uint256).max);
     }
 
     function testBridgingShares(uint256 sharesToBridge) public virtual {

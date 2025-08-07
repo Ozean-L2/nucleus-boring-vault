@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { stdJson as StdJson } from "@forge-std/StdJson.sol";
 
@@ -56,6 +56,8 @@ library ConfigReader {
         address[] assets;
         address[] rateProviders;
         address[] priceFeeds;
+        address atomicQueue;
+        address atomicSolver;
     }
 
     function toConfig(string memory _config, string memory _chainConfig) internal pure returns (Config memory config) {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { BaseScript } from "./../Base.s.sol";
 import { console } from "forge-std/console.sol";
@@ -17,6 +17,9 @@ import { DeployMultiChainLayerZeroTellerWithMultiAssetSupport } from
     "./single/05b_DeployMultiChainLayerZeroTellerWithMultiAssetSupport.s.sol";
 import { DeployMultiChainHyperlaneTeller } from "./single/05c_DeployMultiChainHyperlaneTeller.s.sol";
 import { DeployRolesAuthority } from "./single/06_DeployRolesAuthority.s.sol";
+import { DeployAtomicQueue } from "./DeployAtomicQueue.s.sol";
+import { DeployAtomicSolverV3 } from "./DeployAtomicSolverV3.s.sol";
+import { ConfigureAtomicRoles } from "../ConfigureAtomicRoles.s.sol";
 import { TellerSetup } from "./single/07_TellerSetup.s.sol";
 import { SetAuthorityAndTransferOwnerships } from "./single/08_SetAuthorityAndTransferOwnerships.s.sol";
 
@@ -60,11 +63,11 @@ contract DeployAll is BaseScript {
     function run(string memory deployFile) public {
         deploy(ConfigReader.toConfig(vm.readFile(string.concat(CONFIG_PATH_ROOT, deployFile)), getChainConfigFile()));
         // write everything to an out file
-        mainConfig.boringVault.toHexString().write(OUTPUT_JSON_PATH, ".boringVault");
-        mainConfig.manager.toHexString().write(OUTPUT_JSON_PATH, ".manager");
-        mainConfig.accountant.toHexString().write(OUTPUT_JSON_PATH, ".accountant");
-        mainConfig.teller.toHexString().write(OUTPUT_JSON_PATH, ".teller");
-        mainConfig.rolesAuthority.toHexString().write(OUTPUT_JSON_PATH, ".rolesAuthority");
+        // mainConfig.boringVault.toHexString().write(OUTPUT_JSON_PATH, ".boringVault");
+        // mainConfig.manager.toHexString().write(OUTPUT_JSON_PATH, ".manager");
+        // mainConfig.accountant.toHexString().write(OUTPUT_JSON_PATH, ".accountant");
+        // mainConfig.teller.toHexString().write(OUTPUT_JSON_PATH, ".teller");
+        // mainConfig.rolesAuthority.toHexString().write(OUTPUT_JSON_PATH, ".rolesAuthority");
     }
 
     function deploy(ConfigReader.Config memory config) public override returns (address) {
@@ -91,6 +94,20 @@ contract DeployAll is BaseScript {
         address rolesAuthority = new DeployRolesAuthority().deploy(config);
         config.rolesAuthority = rolesAuthority;
         console.log("Roles Authority: ", rolesAuthority);
+
+        // Deploy AtomicQueue
+        address atomicQueue = new DeployAtomicQueue().deploy(config);
+        config.atomicQueue = atomicQueue;
+        console.log("Atomic Queue: ", atomicQueue);
+
+        // Deploy AtomicSolverV3
+        address atomicSolver = new DeployAtomicSolverV3().deployWithConfig(config.rolesAuthority);
+        config.atomicSolver = atomicSolver;
+        console.log("Atomic Solver V3: ", atomicSolver);
+
+        // Configure Atomic roles
+        new ConfigureAtomicRoles().deployWithConfig(config);
+        console.log("Atomic Roles Configuration Complete");
 
         new SetAuthorityAndTransferOwnerships().deploy(config);
         console.log("Set Authority And Transfer Ownerships Complete");

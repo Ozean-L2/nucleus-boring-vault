@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { FixedPointMathLib } from "@solmate/utils/FixedPointMathLib.sol";
 import { SafeTransferLib } from "@solmate/utils/SafeTransferLib.sol";
 import { ERC20 } from "@solmate/tokens/ERC20.sol";
 import { ReentrancyGuard } from "@solmate/utils/ReentrancyGuard.sol";
 import { IAtomicSolver } from "./IAtomicSolver.sol";
+import { AccountantWithRateProviders } from "../base/Roles/AccountantWithRateProviders.sol";
 
 /**
  * @title AtomicQueue
@@ -19,7 +20,6 @@ import { IAtomicSolver } from "./IAtomicSolver.sol";
  *         total amount of assets aggregated from all their requests, and to also have enough
  *         `offer` asset to cover the aggregate total request of `offerAmount`.
  * @author crispymangoes
- * @custom:security-contact security@molecularlabs.io
  */
 contract AtomicQueue is ReentrancyGuard {
     using SafeTransferLib for ERC20;
@@ -30,14 +30,11 @@ contract AtomicQueue is ReentrancyGuard {
     /**
      * @notice Stores request information needed to fulfill a users atomic request.
      * @param deadline unix timestamp for when request is no longer valid
-     * @param atomicPrice the price in terms of `want` asset the user wants their `offer` assets "sold" at
-     * @dev atomicPrice MUST be in terms of `want` asset decimals.
      * @param offerAmount the amount of `offer` asset the user wants converted to `want` asset
      * @param inSolve bool used during solves to prevent duplicate users, and to prevent redoing multiple checks
      */
     struct AtomicRequest {
         uint64 deadline; // deadline to fulfill request
-        uint88 atomicPrice; // In terms of want asset decimals
         uint96 offerAmount; // The amount of offer asset the user wants to sell.
         bool inSolve; // Indicates whether this user is currently having their request fulfilled.
     }
@@ -63,6 +60,7 @@ contract AtomicQueue is ReentrancyGuard {
     }
 
     // ========================================= GLOBAL STATE =========================================
+    AccountantWithRateProviders public immutable accountant;
 
     /**
      * @notice Maps user address to offer asset to want asset to a AtomicRequest struct.
@@ -103,6 +101,12 @@ contract AtomicQueue is ReentrancyGuard {
         uint256 timestamp
     );
 
+    //============================== CONSTRUCTOR ===============================
+
+    constructor(address _accountant) {
+        accountant = AccountantWithRateProviders(_accountant);
+    }
+
     //============================== USER FUNCTIONS ===============================
 
     /**
@@ -135,47 +139,28 @@ contract AtomicQueue is ReentrancyGuard {
         view
         returns (bool)
     {
-        // Validate amount.
         if (userRequest.offerAmount > offer.balanceOf(user)) return false;
-        // Validate deadline.
         if (block.timestamp > userRequest.deadline) return false;
-        // Validate approval.
         if (offer.allowance(user, address(this)) < userRequest.offerAmount) return false;
-        // Validate offerAmount is nonzero.
         if (userRequest.offerAmount == 0) return false;
-        // Validate atomicPrice is nonzero.
-        if (userRequest.atomicPrice == 0) return false;
 
         return true;
     }
 
     /**
      * @notice Allows user to add/update their withdraw request.
-     * @notice It is possible for a withdraw request with a zero atomicPrice to be made, and solved.
-     *         If this happens, users will be selling their shares for no assets in return.
-     *         To determine a safe atomicPrice, share.previewRedeem should be used to get
-     *         a good share price, then the user can lower it from there to make their request fill faster.
      * @param offer the ERC20 token the user is offering in exchange for the want
      * @param want the ERC20 token the user wants in exchange for offer
-     * @param userRequest the users request
+     * @param deadline unix timestamp for when request is no longer valid
+     * @param offerAmount the amount of offer asset to exchange
      */
-    function updateAtomicRequest(ERC20 offer, ERC20 want, AtomicRequest calldata userRequest) external nonReentrant {
+    function updateAtomicRequest(ERC20 offer, ERC20 want, uint64 deadline, uint96 offerAmount) external nonReentrant {
         AtomicRequest storage request = userAtomicRequest[msg.sender][offer][want];
 
-        request.deadline = userRequest.deadline;
-        request.atomicPrice = userRequest.atomicPrice;
-        request.offerAmount = userRequest.offerAmount;
+        request.deadline = deadline;
+        request.offerAmount = offerAmount;
 
-        // Emit full amount user has.
-        emit AtomicRequestUpdated(
-            msg.sender,
-            address(offer),
-            address(want),
-            userRequest.offerAmount,
-            userRequest.deadline,
-            userRequest.atomicPrice,
-            block.timestamp
-        );
+        emit AtomicRequestUpdated(msg.sender, address(offer), address(want), offerAmount, deadline, 0, block.timestamp);
     }
 
     //============================== SOLVER FUNCTIONS ===============================
@@ -202,11 +187,37 @@ contract AtomicQueue is ReentrancyGuard {
         external
         nonReentrant
     {
-        // Save offer asset decimals.
-        uint8 offerDecimals = offer.decimals();
+        (uint256 assetsToOffer, uint256 assetsForWant) = _prepareSolve(offer, want, users, solver);
 
-        uint256 assetsToOffer;
-        uint256 assetsForWant;
+        IAtomicSolver(solver).finishSolve(runData, msg.sender, offer, want, assetsToOffer, assetsForWant);
+
+        _finalizeSolve(offer, want, users, solver);
+    }
+
+    //============================== INTERNAL HELPER FUNCTIONS ===============================
+    /**
+     * @notice New internal function to handle first phase of solve
+     * @dev Validates all user requests and transfers offer tokens to solver
+     * @dev Calculates total assets needed using current NAV from accountant
+     * @param offer the ERC20 offer token
+     * @param want the ERC20 want token
+     * @param users array of users to process
+     * @param solver the solver address receiving offer tokens
+     * @return assetsToOffer total offer tokens transferred to solver
+     * @return assetsForWant total want tokens solver needs to provide
+     */
+    function _prepareSolve(
+        ERC20 offer,
+        ERC20 want,
+        address[] calldata users,
+        address solver
+    )
+        internal
+        returns (uint256 assetsToOffer, uint256 assetsForWant)
+    {
+        uint256 rate = accountant.getRateInQuoteSafe(want);
+        uint256 offerDecimals = 10 ** offer.decimals();
+
         for (uint256 i; i < users.length; ++i) {
             AtomicRequest storage request = userAtomicRequest[users[i]][offer][want];
 
@@ -214,36 +225,40 @@ contract AtomicQueue is ReentrancyGuard {
             if (block.timestamp > request.deadline) revert AtomicQueue__RequestDeadlineExceeded(users[i]);
             if (request.offerAmount == 0) revert AtomicQueue__ZeroOfferAmount(users[i]);
 
-            // User gets whatever their atomic price * offerAmount is.
-            assetsForWant += _calculateAssetAmount(request.offerAmount, request.atomicPrice, offerDecimals);
-
-            // If all checks above passed, the users request is valid and should be fulfilled.
+            assetsForWant += rate.mulDivDown(request.offerAmount, offerDecimals);
             assetsToOffer += request.offerAmount;
             request.inSolve = true;
-            // Transfer shares from user to solver.
             offer.safeTransferFrom(users[i], solver, request.offerAmount);
         }
+    }
 
-        IAtomicSolver(solver).finishSolve(runData, msg.sender, offer, want, assetsToOffer, assetsForWant);
+    /**
+     * @notice Internal function to handle final phase of solve
+     * @dev Transfers want tokens from solver to users and cleans up state
+     * @dev Uses same NAV rate for all calculations to ensure consistency
+     * @param offer the ERC20 offer token
+     * @param want the ERC20 want token
+     * @param users array of users to process
+     * @param solver the solver address providing want tokens
+     */
+    function _finalizeSolve(ERC20 offer, ERC20 want, address[] calldata users, address solver) internal {
+        uint256 rate = accountant.getRateInQuoteSafe(want);
+        uint256 offerDecimals = 10 ** offer.decimals();
 
         for (uint256 i; i < users.length; ++i) {
             AtomicRequest storage request = userAtomicRequest[users[i]][offer][want];
 
             if (request.inSolve) {
-                // We know that the minimum price and deadline arguments are satisfied since this can only be true if
-                // they were.
+                uint256 amountOut = rate.mulDivDown(request.offerAmount, offerDecimals);
 
-                // Send user their share of assets.
-                uint256 assetsToUser = _calculateAssetAmount(request.offerAmount, request.atomicPrice, offerDecimals);
-
-                want.safeTransferFrom(solver, users[i], assetsToUser);
+                want.safeTransferFrom(solver, users[i], amountOut);
 
                 emit AtomicRequestFulfilled(
-                    users[i], address(offer), address(want), request.offerAmount, assetsToUser, block.timestamp
+                    users[i], address(offer), address(want), request.offerAmount, amountOut, block.timestamp
                 );
 
-                // Set shares to withdraw to 0.
                 request.offerAmount = 0;
+                request.deadline = 0;
                 request.inSolve = false;
             } else {
                 revert AtomicQueue__UserNotInSolve(users[i]);
@@ -271,15 +286,12 @@ contract AtomicQueue is ReentrancyGuard {
         view
         returns (SolveMetaData[] memory metaData, uint256 totalAssetsForWant, uint256 totalAssetsToOffer)
     {
-        // Save offer asset decimals.
-        uint8 offerDecimals = offer.decimals();
-
-        // Setup meta data.
         metaData = new SolveMetaData[](users.length);
+        uint256 rate = accountant.getRateInQuoteSafe(want);
+        uint256 offerDecimalsPow = 10 ** offer.decimals();
 
         for (uint256 i; i < users.length; ++i) {
             AtomicRequest memory request = userAtomicRequest[users[i]][offer][want];
-
             metaData[i].user = users[i];
 
             if (block.timestamp > request.deadline) {
@@ -296,34 +308,12 @@ contract AtomicQueue is ReentrancyGuard {
             }
 
             metaData[i].assetsToOffer = request.offerAmount;
+            metaData[i].assetsForWant = rate.mulDivDown(request.offerAmount, offerDecimalsPow);
 
-            // User gets whatever their execution share price is.
-            uint256 userAssets = _calculateAssetAmount(request.offerAmount, request.atomicPrice, offerDecimals);
-            metaData[i].assetsForWant = userAssets;
-
-            // If flags is zero, no errors occurred.
             if (metaData[i].flags == 0) {
-                totalAssetsForWant += userAssets;
+                totalAssetsForWant += metaData[i].assetsForWant;
                 totalAssetsToOffer += request.offerAmount;
             }
         }
-    }
-
-    //============================== INTERNAL FUNCTIONS ===============================
-
-    /**
-     * @notice Helper function to calculate the amount of want assets a users wants in exchange for
-     *         `offerAmount` of offer asset.
-     */
-    function _calculateAssetAmount(
-        uint256 offerAmount,
-        uint256 atomicPrice,
-        uint8 offerDecimals
-    )
-        internal
-        pure
-        returns (uint256)
-    {
-        return atomicPrice.mulDivDown(offerAmount, 10 ** offerDecimals);
     }
 }

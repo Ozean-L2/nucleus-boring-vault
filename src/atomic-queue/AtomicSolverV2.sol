@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { AtomicQueue, ERC20, SafeTransferLib } from "./AtomicQueue.sol";
 import { IAtomicSolver } from "./IAtomicSolver.sol";
@@ -11,7 +11,6 @@ import { FixedPointMathLib } from "@solmate/utils/FixedPointMathLib.sol";
 /**
  * @title AtomicSolverV2
  * @author crispymangoes
- * @custom:security-contact security@molecularlabs.io
  */
 contract AtomicSolverV2 is IAtomicSolver, Auth {
     using SafeTransferLib for ERC20;

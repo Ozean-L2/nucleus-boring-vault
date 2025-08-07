@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { BoringVault } from "./../../src/base/BoringVault.sol";
 import { EthPerWstEthRateProvider } from "./../../src/oracles/EthPerWstEthRateProvider.sol";
@@ -24,6 +24,7 @@ contract IonPoolTellerTest is IonPoolSharedSetup {
         vm.startPrank(TELLER_OWNER);
         teller.addAsset(WETH);
         teller.addAsset(WSTETH);
+        teller.setDepositCap(type(uint256).max);
         vm.stopPrank();
 
         // Setup accountant

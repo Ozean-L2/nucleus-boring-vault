@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { Auth, Authority } from "@solmate/auth/Auth.sol";
 import { CREATE3 } from "@solmate/utils/CREATE3.sol";

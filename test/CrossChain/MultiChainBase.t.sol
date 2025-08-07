@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { CrossChainBaseTest, ERC20 } from "./CrossChainBase.t.sol";
 import "src/base/Roles/CrossChain/MultiChainTellerBase.sol";

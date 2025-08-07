@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { UManager, FixedPointMathLib, ERC20 } from "src/micro-managers/UManager.sol";
 import { IUniswapV3Router } from "src/interfaces/IUniswapV3Router.sol";

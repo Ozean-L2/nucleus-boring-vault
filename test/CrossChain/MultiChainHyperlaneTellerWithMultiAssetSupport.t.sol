@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import {
     MultiChainTellerBase_MessagesNotAllowedFrom,
@@ -36,6 +36,7 @@ contract MultiChainHyperlaneTellerWithMultiAssetSupportTest is MultiChainBaseTes
 
         sourceTeller = MultiChainHyperlaneTellerWithMultiAssetSupport(sourceTellerAddr);
         destinationTeller = MultiChainHyperlaneTellerWithMultiAssetSupport(destinationTellerAddr);
+        sourceTeller.setDepositCap(type(uint256).max);
     }
 
     function testBridgingShares(uint256 sharesToBridge) external virtual {

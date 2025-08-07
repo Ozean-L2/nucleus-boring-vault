@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity 0.8.21;
+pragma solidity 0.8.22;
 
 import { Test, stdStorage, StdStorage, stdError } from "@forge-std/Test.sol";
 import { BoringVault } from "src/base/BoringVault.sol";
@@ -22,6 +22,10 @@ contract PortPoCTest is Test, DeployPortProofOfConceptScript {
 
         USDX = WETH;
         run();
+
+        vm.prank(hexTrust);
+        teller.setDepositCap(type(uint256).max);
+        vm.stopPrank();
     }
 
     function test_CanArbitrarilyRemoveFunds() external {
@@ -67,12 +71,11 @@ contract PortPoCTest is Test, DeployPortProofOfConceptScript {
         vm.startPrank(alice);
         AtomicQueue.AtomicRequest memory req = AtomicQueue.AtomicRequest({
             deadline: uint64(block.timestamp + 1 days),
-            atomicPrice: 1e18,
             offerAmount: uint96(aliceShares),
             inSolve: false
         });
         boringVault.approve(address(atomicQueue), aliceShares);
-        atomicQueue.updateAtomicRequest(boringVault, WETH, req);
+        atomicQueue.updateAtomicRequest(boringVault, WETH, req.deadline, req.offerAmount);
         vm.stopPrank();
 
         /// 4. NAV setting - Borrower / strategy executor
@@ -125,12 +128,11 @@ contract PortPoCTest is Test, DeployPortProofOfConceptScript {
         vm.startPrank(alice);
         AtomicQueue.AtomicRequest memory req = AtomicQueue.AtomicRequest({
             deadline: uint64(block.timestamp + 1 days),
-            atomicPrice: 1e18,
             offerAmount: uint96(aliceShares),
             inSolve: false
         });
         boringVault.approve(address(atomicQueue), aliceShares);
-        atomicQueue.updateAtomicRequest(boringVault, ERC20(address(69)), req);
+        atomicQueue.updateAtomicRequest(boringVault, ERC20(address(69)), req.deadline, req.offerAmount);
         vm.stopPrank();
 
         /// Should fail
@@ -147,12 +149,11 @@ contract PortPoCTest is Test, DeployPortProofOfConceptScript {
         vm.startPrank(alice);
         req = AtomicQueue.AtomicRequest({
             deadline: uint64(block.timestamp + 1 days),
-            atomicPrice: 1e18,
             offerAmount: uint96(aliceShares),
             inSolve: false
         });
         boringVault.approve(address(atomicQueue), aliceShares);
-        atomicQueue.updateAtomicRequest(boringVault, ERC20(WETH), req);
+        atomicQueue.updateAtomicRequest(boringVault, ERC20(WETH), req.deadline, req.offerAmount);
         vm.stopPrank();
 
         /// Should suceed

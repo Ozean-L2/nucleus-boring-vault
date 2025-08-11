@@ -39,11 +39,15 @@ contract SetAuthorityAndTransferOwnerships is BaseScript {
         IAuthority(config.accountant).transferOwnership(config.protocolAdmin);
         IAuthority(config.teller).transferOwnership(config.protocolAdmin);
         IAuthority(config.rolesAuthority).transferOwnership(config.protocolAdmin);
+        IAuthority(config.atomicQueue).transferOwnership(config.protocolAdmin);
+        IAuthority(config.atomicSolver).transferOwnership(config.protocolAdmin);
 
         // Post Configuration Check
         require(IAuthority(config.boringVault).owner() == config.protocolAdmin, "boringVault");
         require(IAuthority(config.manager).owner() == config.protocolAdmin, "manager");
         require(IAuthority(config.accountant).owner() == config.protocolAdmin, "accountant");
         require(IAuthority(config.teller).owner() == config.protocolAdmin, "teller");
+        require(IAuthority(config.atomicQueue).owner() == config.protocolAdmin, "atomicQueue");
+        require(IAuthority(config.atomicSolver).owner() == config.protocolAdmin, "atomicSolver");
     }
 }

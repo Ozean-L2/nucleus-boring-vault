@@ -43,7 +43,6 @@ contract ConfigureAtomicRoles is BaseScript {
 
         // === ATOMIC QUEUE SETUP ===
         authority.setUserRole(atomicQueue, QUEUE_ROLE, true);
-        authority.setRoleCapability(QUEUE_ROLE, teller, TellerWithMultiAssetSupport.bulkWithdraw.selector, true);
 
         // === ATOMIC SOLVER SETUP ===
         authority.setUserRole(atomicSolver, SOLVER_ROLE, true);
@@ -70,6 +69,34 @@ contract ConfigureAtomicRoles is BaseScript {
             UPDATE_EXCHANGE_RATE_ROLE,
             atomicQueue,
             bytes4(keccak256("solve(address,address,address[],bytes,address)")),
+            true
+        );
+
+        // Allow Borrower to call AtomicSolverV3 functions
+        authority.setRoleCapability(
+            STRATEGIST_ROLE,
+            atomicSolver,
+            bytes4(keccak256("p2pSolve(address,address,address,address[],uint256,uint256)")),
+            true
+        );
+        authority.setRoleCapability(
+            STRATEGIST_ROLE,
+            atomicSolver,
+            bytes4(keccak256("redeemSolve(address,address,address,address[],uint256,uint256,address)")),
+            true
+        );
+
+        // Allow Cicada to call AtomicSolverV3 functions
+        authority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE,
+            atomicSolver,
+            bytes4(keccak256("p2pSolve(address,address,address,address[],uint256,uint256)")),
+            true
+        );
+        authority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE,
+            atomicSolver,
+            bytes4(keccak256("redeemSolve(address,address,address,address[],uint256,uint256,address)")),
             true
         );
 

@@ -12,17 +12,27 @@ bytes32 constant SALT = 0x5bac910c72debe007df22f00000000000000000000000000000000
 
 contract DeployAtomicQueue is BaseScript {
     function run() public broadcast returns (AtomicQueue atomicQueue) {
-        // Need to pass config to get accountant
         ConfigReader.Config memory config = getConfig();
-
-        bytes memory creationCode = abi.encodePacked(type(AtomicQueue).creationCode, abi.encode(config.accountant));
-
+        bytes memory creationCode = abi.encodePacked(
+            type(AtomicQueue).creationCode,
+            abi.encode(
+                config.accountant,
+                broadcaster, // owner
+                config.rolesAuthority // authority
+            )
+        );
         atomicQueue = AtomicQueue(CREATEX.deployCreate3(SALT, creationCode));
     }
 
     function deploy(ConfigReader.Config memory config) public override broadcast returns (address) {
-        bytes memory creationCode = abi.encodePacked(type(AtomicQueue).creationCode, abi.encode(config.accountant));
-
+        bytes memory creationCode = abi.encodePacked(
+            type(AtomicQueue).creationCode,
+            abi.encode(
+                config.accountant,
+                broadcaster, // owner
+                config.rolesAuthority // authority
+            )
+        );
         return CREATEX.deployCreate3(SALT, creationCode);
     }
 }

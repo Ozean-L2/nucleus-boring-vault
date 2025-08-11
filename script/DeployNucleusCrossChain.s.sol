@@ -129,7 +129,7 @@ contract DeployNucleusCrossChain is Script {
         console2.log("L1 Teller deployed:", address(l1Teller));
 
         // Deploy L1 AtomicQueue
-        l1AtomicQueue = new AtomicQueue(address(l1Accountant));
+        l1AtomicQueue = new AtomicQueue(address(l1Accountant), owner, l1Authority);
         console2.log("L1 AtomicQueue deployed:", address(l1AtomicQueue));
 
         // Deploy L1 AtomicSolver
@@ -179,7 +179,7 @@ contract DeployNucleusCrossChain is Script {
         console2.log("L2 Teller deployed:", address(l2Teller));
 
         // Deploy L2 AtomicQueue
-        l2AtomicQueue = new AtomicQueue(address(l2Accountant));
+        l2AtomicQueue = new AtomicQueue(address(l2Accountant), owner, l2Authority);
         console2.log("L2 AtomicQueue deployed:", address(l2AtomicQueue));
 
         // Deploy L2 AtomicSolver

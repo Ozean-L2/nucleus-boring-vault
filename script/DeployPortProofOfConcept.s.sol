@@ -58,7 +58,7 @@ contract DeployPortProofOfConceptScript is Script, MainnetAddresses {
 
         rolesAuthority = new RolesAuthority(owner, Authority(address(0)));
 
-        atomicQueue = new AtomicQueue(address(accountant));
+        atomicQueue = new AtomicQueue(address(accountant), address(this), rolesAuthority);
 
         atomicSolverV3 = new AtomicSolverV3(address(this), rolesAuthority);
 
@@ -103,6 +103,9 @@ contract DeployPortProofOfConceptScript is Script, MainnetAddresses {
         );
         rolesAuthority.setRoleCapability(
             MINTER_ROLE, address(accountant), AccountantWithRateProviders.checkpoint.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            SOLVER_ROLE, address(atomicQueue), bytes4(keccak256("solve(address,address,address[],bytes,address)")), true
         );
 
         rolesAuthority.setPublicCapability(address(teller), TellerWithMultiAssetSupport.deposit.selector, true);

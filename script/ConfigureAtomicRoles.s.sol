@@ -7,6 +7,7 @@ import { TellerWithMultiAssetSupport } from "src/base/Roles/TellerWithMultiAsset
 import { AtomicQueue } from "src/atomic-queue/AtomicQueue.sol";
 import { BaseScript } from "./Base.s.sol";
 import { ConfigReader } from "./ConfigReader.s.sol";
+import "./../src/helper/Constants.sol";
 
 contract ConfigureAtomicRoles is BaseScript {
     // Role constants
@@ -55,8 +56,21 @@ contract ConfigureAtomicRoles is BaseScript {
 
         // === CROSS-CONTRACT PERMISSIONS ===
         // Allow AtomicSolver to call solve on AtomicQueue
-        authority.setPublicCapability(
-            atomicQueue, bytes4(keccak256("solve(address,address,address[],bytes,address)")), true
+        authority.setRoleCapability(
+            SOLVER_ROLE, atomicQueue, bytes4(keccak256("solve(address,address,address[],bytes,address)")), true
+        );
+
+        // Borrower (STRATEGIST_ROLE):
+        authority.setRoleCapability(
+            STRATEGIST_ROLE, atomicQueue, bytes4(keccak256("solve(address,address,address[],bytes,address)")), true
+        );
+
+        // Cicada (UPDATE_EXCHANGE_RATE_ROLE):
+        authority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE,
+            atomicQueue,
+            bytes4(keccak256("solve(address,address,address[],bytes,address)")),
+            true
         );
 
         // Allow AtomicQueue to call finishSolve on AtomicSolver
@@ -65,6 +79,12 @@ contract ConfigureAtomicRoles is BaseScript {
         );
 
         // Allow AtomicSolver to call bulkWithdraw on Teller (for redeem solve)
-        authority.setPublicCapability(teller, TellerWithMultiAssetSupport.bulkWithdraw.selector, true);
+        authority.setRoleCapability(SOLVER_ROLE, teller, TellerWithMultiAssetSupport.bulkWithdraw.selector, true);
+
+        // === WHITELIST ATOMIC SOLVER ===
+        // Whitelist the AtomicSolver contract so it can call bulkWithdraw
+        address[] memory contracts = new address[](1);
+        contracts[0] = atomicSolver;
+        TellerWithMultiAssetSupport(teller).updateContractWhitelist(contracts, true);
     }
 }

@@ -88,7 +88,7 @@ contract DeployPortLayerZeroScript is Script, MainnetAddresses {
             owner, address(l1Vault), address(l1Accountant), lzEndpoint
         );
         l1Authority = new RolesAuthority(owner, Authority(address(0)));
-        l1AtomicQueue = new AtomicQueue(address(l1Accountant));
+        l1AtomicQueue = new AtomicQueue(address(l1Accountant), owner, l1Authority);
         l1AtomicSolver = new AtomicSolverV3(owner, l1Authority);
 
         // Setup authorities
@@ -113,7 +113,7 @@ contract DeployPortLayerZeroScript is Script, MainnetAddresses {
             owner, address(l2Vault), address(l2Accountant), lzEndpoint
         );
         l2Authority = new RolesAuthority(owner, Authority(address(0)));
-        l2AtomicQueue = new AtomicQueue(address(l2Accountant));
+        l2AtomicQueue = new AtomicQueue(address(l2Accountant), owner, l2Authority);
         l2AtomicSolver = new AtomicSolverV3(owner, l2Authority);
 
         // Setup authorities

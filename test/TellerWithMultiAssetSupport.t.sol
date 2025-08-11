@@ -78,7 +78,7 @@ contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
 
         rolesAuthority = new RolesAuthority(address(this), Authority(address(0)));
 
-        atomicQueue = new AtomicQueue(address(accountant));
+        atomicQueue = new AtomicQueue(address(accountant), address(this), rolesAuthority);
         atomicSolverV3 = new AtomicSolverV3(address(this), rolesAuthority);
 
         boringVault.setAuthority(rolesAuthority);
@@ -116,6 +116,9 @@ contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
         rolesAuthority.setPublicCapability(address(teller), TellerWithMultiAssetSupport.deposit.selector, true);
         rolesAuthority.setPublicCapability(
             address(teller), TellerWithMultiAssetSupport.depositWithPermit.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            SOLVER_ROLE, address(atomicQueue), bytes4(keccak256("solve(address,address,address[],bytes,address)")), true
         );
 
         rolesAuthority.setUserRole(address(this), ADMIN_ROLE, true);

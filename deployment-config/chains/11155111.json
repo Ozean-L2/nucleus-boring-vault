@@ -4,11 +4,6 @@
   "lzEndpoint": "0x6EDCE65403992e310A62460808c4b910D972f10f",
   "mailbox": "0xfFAEF09B3cd11D9b20d1a19bECca54EEC2884766",
   "assetToRateProviderAndPriceFeed": {
-    "0x94a9d9ac8a22534e3faca9f4e7f2e2cf85d5e4c8": {
-      "isPeggedToBase": true,
-      "rateProvider": "0x0000000000000000000000000000000000000000",
-      "priceFeed": "0x0000000000000000000000000000000000000000"
-    },
     "0xaa8e23fb1079ea71e0a56f48a2aa51851d8433d0": {
       "isPeggedToBase": true,
       "rateProvider": "0x0000000000000000000000000000000000000000",

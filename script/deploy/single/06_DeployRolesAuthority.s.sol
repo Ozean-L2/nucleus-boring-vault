@@ -48,10 +48,10 @@ contract DeployRolesAuthority is BaseScript {
     // 2. teller.bridge()
     // 3. teller.depositAndBridge()
     // --- Users / Role Assignments ---
-    // STRATEGIST_ROLE -> OWNER (multisig)
+    // STRATEGIST_ROLE -> BORROWER (EOA)
     // MANAGER_ROLE -> MANAGER (contract)
     // TELLER_ROLE -> TELLER (contract)
-    // UPDATE_EXCHANGE_RATE_ROLE -> EXCHANGE_RATE_BOT (EOA) & OWNER (multisig)
+    // UPDATE_EXCHANGE_RATE_ROLE -> EXCHANGE_RATE_BOT (EOA) & OWNER (multisig) & Third-paty manager (i.e Cicada)
     // PAUSER_ROLE -> PAUSER (EOA) & OWNER (multisig)
     function deploy(ConfigReader.Config memory config) public virtual override broadcast returns (address) {
         // Require config Values
@@ -89,6 +89,13 @@ contract DeployRolesAuthority is BaseScript {
         );
 
         rolesAuthority.setRoleCapability(
+            STRATEGIST_ROLE, config.teller, TellerWithMultiAssetSupport.updateManualWhitelist.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            STRATEGIST_ROLE, config.teller, TellerWithMultiAssetSupport.updateContractWhitelist.selector, true
+        );
+
+        rolesAuthority.setRoleCapability(
             MANAGER_ROLE, config.boringVault, bytes4(keccak256(abi.encodePacked("manage(address,bytes,uint256)"))), true
         );
 
@@ -102,9 +109,43 @@ contract DeployRolesAuthority is BaseScript {
         rolesAuthority.setRoleCapability(TELLER_ROLE, config.boringVault, BoringVault.enter.selector, true);
 
         rolesAuthority.setRoleCapability(TELLER_ROLE, config.boringVault, BoringVault.exit.selector, true);
+        rolesAuthority.setRoleCapability(
+            TELLER_ROLE, config.accountant, AccountantWithRateProviders.checkpoint.selector, true
+        );
 
         rolesAuthority.setRoleCapability(
             UPDATE_EXCHANGE_RATE_ROLE, config.accountant, AccountantWithRateProviders.updateExchangeRate.selector, true
+        );
+
+        rolesAuthority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE, config.accountant, AccountantWithRateProviders.setLendingRate.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE, config.accountant, AccountantWithRateProviders.checkpoint.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE,
+            config.accountant,
+            AccountantWithRateProviders.setManagementFeeRate.selector,
+            true
+        );
+        rolesAuthority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE, config.accountant, AccountantWithRateProviders.setMaxLendingRate.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE, config.accountant, AccountantWithRateProviders.setRateProviderData.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE, config.accountant, AccountantWithRateProviders.updateDelay.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE, config.accountant, AccountantWithRateProviders.updateUpper.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE, config.accountant, AccountantWithRateProviders.updateLower.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            UPDATE_EXCHANGE_RATE_ROLE, config.teller, TellerWithMultiAssetSupport.setDepositCap.selector, true
         );
 
         rolesAuthority.setRoleCapability(PAUSER_ROLE, config.teller, TellerWithMultiAssetSupport.pause.selector, true);
@@ -113,6 +154,14 @@ contract DeployRolesAuthority is BaseScript {
         );
         rolesAuthority.setRoleCapability(
             PAUSER_ROLE, config.manager, ManagerWithMerkleVerification.pause.selector, true
+        );
+
+        rolesAuthority.setRoleCapability(PAUSER_ROLE, config.teller, TellerWithMultiAssetSupport.unpause.selector, true);
+        rolesAuthority.setRoleCapability(
+            PAUSER_ROLE, config.accountant, AccountantWithRateProviders.unpause.selector, true
+        );
+        rolesAuthority.setRoleCapability(
+            PAUSER_ROLE, config.manager, ManagerWithMerkleVerification.unpause.selector, true
         );
 
         // --- Set Public Capabilities ---

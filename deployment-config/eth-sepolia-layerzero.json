@@ -1,28 +1,28 @@
 {
-  "base": "0x43bd82D1e29a1bEC03AfD11D5a3252779b8c760c",
+  "base": "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8",
   "protocolAdmin": "0xe43420E1f83530AAf8ad94e6904FDbdc3556Da2B",
-  "boringVaultAndBaseDecimals": "18",
+  "boringVaultAndBaseDecimals": "6",
   "boringVault": {
-    "boringVaultSalt": "0x2ddd634c506ad203da17ff00000000000000000000000000000000000000039a",
-    "boringVaultName": "Port Vault",
-    "boringVaultSymbol": "PV",
+    "boringVaultSalt": "0x2ddd634c506ad203da17ff00000000000000000000000000000000000000059a",
+    "boringVaultName": "Liquid Credit - PayFi",
+    "boringVaultSymbol": "cpLC",
     "address": "0x0000000000000000000000000000000000000000"
   },
   "manager": {
-    "managerSalt": "0x40432d4b4ec00003b4a25000000000000000000000000000000000000000039a",
+    "managerSalt": "0x40432d4b4ec00003b4a25000000000000000000000000000000000000000059a",
     "address": "0x0000000000000000000000000000000000000000"
   },
   "accountant": {
-    "accountantSalt": "0x7a184dbea6f3cc0318679f00000000000000000000000000000000000000039a",
+    "accountantSalt": "0x7a184dbea6f3cc0318679f00000000000000000000000000000000000000059a",
     "payoutAddress": "0xe43420E1f83530AAf8ad94e6904FDbdc3556Da2B",
     "allowedExchangeRateChangeUpper": "10003",
     "allowedExchangeRateChangeLower": "10000",
     "minimumUpdateDelayInSeconds": "3600",
-    "managementFee": "2000",
+    "managementFee": "100",
     "address": "0x0000000000000000000000000000000000000000"
   },
   "teller": {
-    "tellerSalt": "0x61f8968749a56d01202c9100000000000000000000000000000000000000039a",
+    "tellerSalt": "0x61f8968749a56d01202c9100000000000000000000000000000000000000059a",
     "maxGasForPeer": 100000,
     "minGasForPeer": 0,
     "peerEid": 40232,
@@ -34,21 +34,20 @@
       "optionalThreshold": 1
     },
     "assets": [
-      "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8",
       "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
       "0x43bd82D1e29a1bEC03AfD11D5a3252779b8c760c"
     ],
     "address": "0x0000000000000000000000000000000000000000"
   },
   "rolesAuthority": {
-    "rolesAuthoritySalt": "0x76bbc3b3b3000b01466a3a00000000000000000000000000000000000000039a",
-    "strategist": "0xe43420E1f83530AAf8ad94e6904FDbdc3556Da2B",
-    "exchangeRateBot": "0xe43420E1f83530AAf8ad94e6904FDbdc3556Da2B",
-    "pauser": "0xe43420E1f83530AAf8ad94e6904FDbdc3556Da2B",
+    "rolesAuthoritySalt": "0x76bbc3b3b3000b01466a3a00000000000000000000000000000000000000059a",
+    "strategist": "0xB3FFde53f0076295f2C183f13b4A07dE288Df61D",
+    "exchangeRateBot": "0x5898e09a4ac5798a93ee08356318299e00a7A837",
+    "pauser": "0x5898e09a4ac5798a93ee08356318299e00a7A837",
     "address": "0x0000000000000000000000000000000000000000"
   },
   "decoder": {
-    "decoderSalt": "0x58b53893da2e0b0248268c00000000000000000000000000000000000000039a",
+    "decoderSalt": "0x58b53893da2e0b0248268c00000000000000000000000000000000000000059a",
     "address": "0x0000000000000000000000000000000000000000"
   }
 }

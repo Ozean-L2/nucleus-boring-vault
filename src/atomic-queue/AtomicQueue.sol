@@ -7,6 +7,7 @@ import { ERC20 } from "@solmate/tokens/ERC20.sol";
 import { ReentrancyGuard } from "@solmate/utils/ReentrancyGuard.sol";
 import { IAtomicSolver } from "./IAtomicSolver.sol";
 import { AccountantWithRateProviders } from "../base/Roles/AccountantWithRateProviders.sol";
+import { Auth, Authority } from "@solmate/auth/Auth.sol";
 
 /**
  * @title AtomicQueue
@@ -21,7 +22,7 @@ import { AccountantWithRateProviders } from "../base/Roles/AccountantWithRatePro
  *         `offer` asset to cover the aggregate total request of `offerAmount`.
  * @author crispymangoes
  */
-contract AtomicQueue is ReentrancyGuard {
+contract AtomicQueue is ReentrancyGuard, Auth {
     using SafeTransferLib for ERC20;
     using FixedPointMathLib for uint256;
 
@@ -104,7 +105,7 @@ contract AtomicQueue is ReentrancyGuard {
 
     //============================== CONSTRUCTOR ===============================
 
-    constructor(address _accountant) {
+    constructor(address _accountant, address _owner, Authority _authority) Auth(_owner, _authority) {
         accountant = AccountantWithRateProviders(_accountant);
     }
 
@@ -186,6 +187,7 @@ contract AtomicQueue is ReentrancyGuard {
         address solver
     )
         external
+        requiresAuth
         nonReentrant
     {
         (uint256 assetsToOffer, uint256 assetsForWant) = _prepareSolve(offer, want, users, solver);
@@ -264,8 +266,6 @@ contract AtomicQueue is ReentrancyGuard {
                 request.offerAmount = 0;
                 request.deadline = 0;
                 request.inSolve = false;
-            } else {
-                revert AtomicQueue__UserNotInSolve(users[i]);
             }
         }
     }

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity 0.8.22;
 
-import { ITBPositionDecoderAndSanitizer } from
-    "src/base/DecodersAndSanitizers/Protocols/ITB/ITBPositionDecoderAndSanitizer.sol";
+import {
+    ITBPositionDecoderAndSanitizer
+} from "src/base/DecodersAndSanitizers/Protocols/ITB/ITBPositionDecoderAndSanitizer.sol";
 import { Deployer } from "src/helper/Deployer.sol";
 import { MainnetAddresses } from "test/resources/MainnetAddresses.sol";
 import { ContractNames } from "resources/ContractNames.sol";

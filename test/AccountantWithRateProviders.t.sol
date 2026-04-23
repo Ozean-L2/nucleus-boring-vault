@@ -325,12 +325,9 @@ contract AccountantWithRateProvidersTest is Test, MainnetAddresses {
             ,
             uint128 fees_owed,
             uint128 total_shares,
-            uint96 current_exchange_rate,
-            ,
-            ,
+            uint96 current_exchange_rate,,,
             uint64 last_update_timestamp,
-            bool is_paused,
-            ,
+            bool is_paused,,
         ) = accountant.accountantState();
 
         assertApproxEqRel(fees_owed, expected_fees_owed, 0.001e18, "Fees after 1 hour");

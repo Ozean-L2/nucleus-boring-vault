@@ -2,8 +2,9 @@
 pragma solidity 0.8.22;
 
 import { AccountantWithRateProviders } from "./../../../src/base/Roles/AccountantWithRateProviders.sol";
-import { MultiChainLayerZeroTellerWithMultiAssetSupport } from
-    "./../../../src/base/Roles/CrossChain/MultiChainLayerZeroTellerWithMultiAssetSupport.sol";
+import {
+    MultiChainLayerZeroTellerWithMultiAssetSupport
+} from "./../../../src/base/Roles/CrossChain/MultiChainLayerZeroTellerWithMultiAssetSupport.sol";
 import { BaseScript } from "./../../Base.s.sol";
 import { stdJson as StdJson } from "@forge-std/StdJson.sol";
 import { ConfigReader } from "../../ConfigReader.s.sol";

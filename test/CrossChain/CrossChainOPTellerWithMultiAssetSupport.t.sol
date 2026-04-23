@@ -2,8 +2,9 @@
 pragma solidity 0.8.22;
 
 import { CrossChainBaseTest, CrossChainTellerBase, ERC20, BridgeData } from "./CrossChainBase.t.sol";
-import { CrossChainOPTellerWithMultiAssetSupport } from
-    "src/base/Roles/CrossChain/CrossChainOPTellerWithMultiAssetSupport.sol";
+import {
+    CrossChainOPTellerWithMultiAssetSupport
+} from "src/base/Roles/CrossChain/CrossChainOPTellerWithMultiAssetSupport.sol";
 import { SafeTransferLib } from "@solmate/utils/SafeTransferLib.sol";
 
 import { TellerWithMultiAssetSupport } from "src/base/Roles/TellerWithMultiAssetSupport.sol";
@@ -174,9 +175,8 @@ contract CrossChainOPTellerWithMultiAssetSupportTest is CrossChainBaseTest {
         vm.expectRevert(
             bytes(
                 abi.encodeWithSelector(
-                    CrossChainOPTellerWithMultiAssetSupport
-                        .CrossChainOPTellerWithMultiAssetSupport_GasOutOfBounds
-                        .selector,
+                    CrossChainOPTellerWithMultiAssetSupport.CrossChainOPTellerWithMultiAssetSupport_GasOutOfBounds
+                    .selector,
                     uint32(80_000)
                 )
             )
@@ -188,9 +188,8 @@ contract CrossChainOPTellerWithMultiAssetSupportTest is CrossChainBaseTest {
         vm.expectRevert(
             bytes(
                 abi.encodeWithSelector(
-                    CrossChainOPTellerWithMultiAssetSupport
-                        .CrossChainOPTellerWithMultiAssetSupport_GasOutOfBounds
-                        .selector,
+                    CrossChainOPTellerWithMultiAssetSupport.CrossChainOPTellerWithMultiAssetSupport_GasOutOfBounds
+                    .selector,
                     uint32(80_000)
                 )
             )

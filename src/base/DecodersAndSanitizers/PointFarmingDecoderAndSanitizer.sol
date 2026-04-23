@@ -2,12 +2,15 @@
 pragma solidity 0.8.22;
 
 import { BaseDecoderAndSanitizer } from "src/base/DecodersAndSanitizers/BaseDecoderAndSanitizer.sol";
-import { EigenLayerLSTStakingDecoderAndSanitizer } from
-    "src/base/DecodersAndSanitizers/Protocols/EigenLayerLSTStakingDecoderAndSanitizer.sol";
-import { SwellSimpleStakingDecoderAndSanitizer } from
-    "src/base/DecodersAndSanitizers/Protocols/SwellSimpleStakingDecoderAndSanitizer.sol";
-import { ZircuitSimpleStakingDecoderAndSanitizer } from
-    "src/base/DecodersAndSanitizers/Protocols/ZircuitSimpleStakingDecoderAndSanitizer.sol";
+import {
+    EigenLayerLSTStakingDecoderAndSanitizer
+} from "src/base/DecodersAndSanitizers/Protocols/EigenLayerLSTStakingDecoderAndSanitizer.sol";
+import {
+    SwellSimpleStakingDecoderAndSanitizer
+} from "src/base/DecodersAndSanitizers/Protocols/SwellSimpleStakingDecoderAndSanitizer.sol";
+import {
+    ZircuitSimpleStakingDecoderAndSanitizer
+} from "src/base/DecodersAndSanitizers/Protocols/ZircuitSimpleStakingDecoderAndSanitizer.sol";
 
 contract PointFarmingDecoderAndSanitizer is
     EigenLayerLSTStakingDecoderAndSanitizer,

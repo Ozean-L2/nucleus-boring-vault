@@ -62,7 +62,9 @@ contract CheckTellerUpgrade is BaseScript {
         // roles
         require(!authority.doesUserHaveRole(oldTeller, TELLER_ROLE), "oldTeller must not have the TELLER_ROLE");
         require(
-            !authority.doesRoleHaveCapability(SOLVER_ROLE, oldTeller, TellerWithMultiAssetSupport.bulkWithdraw.selector),
+            !authority.doesRoleHaveCapability(
+                SOLVER_ROLE, oldTeller, TellerWithMultiAssetSupport.bulkWithdraw.selector
+            ),
             "SOLVER_ROLE must not be able to call oldTeller's bulkWithdraw"
         );
 

@@ -2,7 +2,10 @@
 pragma solidity 0.8.22;
 
 import { INonFungiblePositionManager } from "src/interfaces/RawDataDecoderAndSanitizerInterfaces.sol";
-import { BaseDecoderAndSanitizer, DecoderCustomTypes } from "src/base/DecodersAndSanitizers/BaseDecoderAndSanitizer.sol";
+import {
+    BaseDecoderAndSanitizer,
+    DecoderCustomTypes
+} from "src/base/DecodersAndSanitizers/BaseDecoderAndSanitizer.sol";
 
 abstract contract UniswapV3DecoderAndSanitizer is BaseDecoderAndSanitizer {
     //============================== ERRORS ===============================
@@ -130,11 +133,7 @@ abstract contract UniswapV3DecoderAndSanitizer is BaseDecoderAndSanitizer {
 
     // @desc Uniswap V3 function to safeTransferFrom ERC721s
     // @tag to:address:The recipient of the ERC721
-    function safeTransferFrom(
-        address,
-        address to,
-        uint256
-    )
+    function safeTransferFrom(address, address to, uint256)
         external
         pure
         virtual

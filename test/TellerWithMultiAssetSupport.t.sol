@@ -399,9 +399,7 @@ contract TellerWithMultiAssetSupportTest is Test, MainnetAddresses {
 
         // Share lock period is not set, so user can submit withdraw request immediately.
         AtomicQueue.AtomicRequest memory req = AtomicQueue.AtomicRequest({
-            deadline: uint64(block.timestamp + 1 days),
-            offerAmount: uint96(shares),
-            inSolve: false
+            deadline: uint64(block.timestamp + 1 days), offerAmount: uint96(shares), inSolve: false
         });
         boringVault.approve(address(atomicQueue), shares);
         atomicQueue.updateAtomicRequest(boringVault, WETH, req.deadline, req.offerAmount);

@@ -7,8 +7,9 @@ import { AccountantWithRateProviders } from "src/base/Roles/AccountantWithRatePr
 import { RolesAuthority, Authority } from "@solmate/auth/authorities/RolesAuthority.sol";
 import { AtomicSolverV3 } from "src/atomic-queue/AtomicSolverV3.sol";
 import { AtomicQueue } from "src/atomic-queue/AtomicQueue.sol";
-import { MultiChainLayerZeroTellerWithMultiAssetSupport } from
-    "src/base/Roles/CrossChain/MultiChainLayerZeroTellerWithMultiAssetSupport.sol";
+import {
+    MultiChainLayerZeroTellerWithMultiAssetSupport
+} from "src/base/Roles/CrossChain/MultiChainLayerZeroTellerWithMultiAssetSupport.sol";
 import { MainnetAddresses } from "test/resources/MainnetAddresses.sol";
 
 contract DeployPortLayerZeroScript is Script, MainnetAddresses {
@@ -82,8 +83,9 @@ contract DeployPortLayerZeroScript is Script, MainnetAddresses {
     function _deployL1Infrastructure() internal {
         // Deploy L1 contracts
         l1Vault = new BoringVault(owner, "Port L1 Vault", "PL1V", 18);
-        l1Accountant =
-            new AccountantWithRateProviders(owner, address(l1Vault), owner, 1e18, address(WETH), 1.001e4, 0.999e4, 1, 0);
+        l1Accountant = new AccountantWithRateProviders(
+            owner, address(l1Vault), owner, 1e18, address(WETH), 1.001e4, 0.999e4, 1, 0
+        );
         l1Teller = new MultiChainLayerZeroTellerWithMultiAssetSupport(
             owner, address(l1Vault), address(l1Accountant), lzEndpoint
         );
@@ -107,8 +109,9 @@ contract DeployPortLayerZeroScript is Script, MainnetAddresses {
     function _deployL2Infrastructure() internal {
         // Deploy L2 contracts
         l2Vault = new BoringVault(owner, "Port L2 Vault", "PL2V", 18);
-        l2Accountant =
-            new AccountantWithRateProviders(owner, address(l2Vault), owner, 1e18, address(WETH), 1.001e4, 0.999e4, 1, 0);
+        l2Accountant = new AccountantWithRateProviders(
+            owner, address(l2Vault), owner, 1e18, address(WETH), 1.001e4, 0.999e4, 1, 0
+        );
         l2Teller = new MultiChainLayerZeroTellerWithMultiAssetSupport(
             owner, address(l2Vault), address(l2Accountant), lzEndpoint
         );

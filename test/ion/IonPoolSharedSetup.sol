@@ -79,7 +79,7 @@ contract IonPoolSharedSetup is Test, MainnetAddresses {
 
         ionPoolDecoderAndSanitizer = new IonPoolDecoderAndSanitizer(address(boringVault));
         rawDataDecoderAndSanitizer = address(ionPoolDecoderAndSanitizer); // TODO Make this calculated at runtime
-            // instead
+        // instead
 
         // Set the merkle root
         leafs.push(ManageLeaf(address(WSTETH), false, "approve(address,uint256)", new address[](1)));

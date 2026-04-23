@@ -201,7 +201,14 @@ contract ExecutorFeeLibMock is Ownable, IExecutorFeeLib {
         }
     }
 
-    function _isV1Eid(uint32 /*_eid*/ ) internal pure virtual returns (bool) {
+    function _isV1Eid(
+        uint32 /*_eid*/
+    )
+        internal
+        pure
+        virtual
+        returns (bool)
+    {
         return false;
     }
 

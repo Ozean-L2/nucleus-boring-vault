@@ -23,8 +23,7 @@ contract DeployIonBoringVaultScript is BaseScript {
         // Create Contract
         bytes memory creationCode = type(BoringVault).creationCode;
         BoringVault boringVault = BoringVault(
-            payable(
-                CREATEX.deployCreate3(
+            payable(CREATEX.deployCreate3(
                     config.boringVaultSalt,
                     abi.encodePacked(
                         creationCode,
@@ -35,8 +34,7 @@ contract DeployIonBoringVaultScript is BaseScript {
                             config.boringVaultAndBaseDecimals // decimals
                         )
                     )
-                )
-            )
+                ))
         );
 
         // Post Deploy Checks

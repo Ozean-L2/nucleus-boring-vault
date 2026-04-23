@@ -401,9 +401,8 @@ contract AccountantWithRateProviders is Auth, IRateProvider {
             uint256 timeElapsed = block.timestamp - lendingInfo._lastAccrualTime;
 
             // always update the rate (even when TVL = 0)
-            uint256 rateIncrease = uint256(accountantState._exchangeRate).mulDivDown(
-                lendingInfo._lendingRate * timeElapsed, SECONDS_PER_YEAR * BASIS_POINTS
-            );
+            uint256 rateIncrease = uint256(accountantState._exchangeRate)
+                .mulDivDown(lendingInfo._lendingRate * timeElapsed, SECONDS_PER_YEAR * BASIS_POINTS);
             newRate = accountantState._exchangeRate + uint96(rateIncrease);
 
             // Interest accrued is only for actual deposits
@@ -506,8 +505,9 @@ contract AccountantWithRateProviders is Auth, IRateProvider {
             // Only calculate management fees when there are actual deposits
             if (vault.totalSupply() > 0 && accountantState._managementFee > 0) {
                 uint256 totalValue = vault.totalSupply().mulDivDown(newRate, ONE_SHARE);
-                uint256 managementFees =
-                    totalValue.mulDivDown(accountantState._managementFee * timeElapsed, SECONDS_PER_YEAR * BASIS_POINTS);
+                uint256 managementFees = totalValue.mulDivDown(
+                    accountantState._managementFee * timeElapsed, SECONDS_PER_YEAR * BASIS_POINTS
+                );
                 accountantState._feesOwedInBase += uint128(managementFees);
             }
             lendingInfo._lastAccrualTime = block.timestamp;
